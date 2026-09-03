@@ -1,0 +1,30 @@
+{
+    "$schema": "https://json.schemastore.org/package.json",
+    "name": "creatifact",
+    "version": "1.0.0",
+    "description": "create developer artifacts",
+    "license": "ISC",
+    "author": "",
+    "type": "module",
+    "main": "index.js",
+    "scripts": {
+        "start": "node dist/index",
+        "build": "tsc -p .",
+        "dev": "tsc-watch --onSuccess \"node dist/index\""
+    },
+    "dependencies": {
+        "dotenv": "^17.4.2",
+        "express": "^5.2.1",
+        "octokit": "^5.0.5",
+        "pg": "^8.23.0",
+        "zod": "^4.4.3"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.6",
+        "@types/node": "^26.2.0",
+        "@types/pg": "^8.23.1",
+        "tsc-watch": "^7.2.1",
+        "tsx": "^4.23.12",
+        "typescript": "^7.0.2"
+    }
+}
