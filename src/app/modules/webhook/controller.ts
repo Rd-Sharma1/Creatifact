@@ -1,12 +1,13 @@
 import type { Request, Response } from "express";
+import { pushEventService } from "./service.js";
 
 const handleWebhookEvent = async (req: Request, res: Response) => {
-    console.log("Received webhook event");
-    console.log("Headers:", req.headers);
-    console.log("Body:", req.body);
+    // console.log("Received webhook event");
+    // console.log("Headers:", req.headers);
+    // console.log("Body:", req.body);
 
     const payload = JSON.parse(req.body);
-    console.log("Parsed payload:", payload);
+    // console.log("Parsed payload:", payload);
 
     const type = req.headers["x-github-event"];
     if (!type || typeof type !== "string") {
@@ -14,10 +15,20 @@ const handleWebhookEvent = async (req: Request, res: Response) => {
         return;
     }
 
+    switch (type) {
+        case "push":
+            pushEventService(payload);
+            break;
+
+        default:
+            console.log(`${type} is not a getting handled yet`);
+            res.status(400).send("Invalid event");
+            break;
+    }
+
     res.sendStatus(200);
 
-    console.log(`Received event: ${type}`);
-    console.log(`Payload: ${JSON.stringify(payload)}`);
+    // console.log(`Received event: ${type}`);
 };
 
 export { handleWebhookEvent };

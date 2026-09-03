@@ -1,5 +1,8 @@
 import type { Express } from "express";
 import express from "express";
+import { serve } from "inngest/express";
+import { inngest } from "./modules/inngest/client.js";
+import { functions } from "./modules/inngest/index.js";
 import { webhookRouter } from "./modules/webhook/routes.js";
 
 export function createApplications(): Express {
@@ -11,6 +14,12 @@ export function createApplications(): Express {
 
     //Middleware
     app.use(express.json());
+
+    app.use(
+        // Expose the middleware on our recommended path at `/api/inngest`.
+        "/api/inngest",
+        serve({ client: inngest, functions }),
+    );
 
     //Routes
     app.get("/", (req, res) => {
