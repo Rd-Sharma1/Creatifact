@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { pushEventService } from "./service.js";
 
 const handleWebhookEvent = async (req: Request, res: Response) => {
-    // console.log("Received webhook event");
+    console.log("Received webhook event");
     // console.log("Headers:", req.headers);
     // console.log("Body:", req.body);
 
@@ -17,6 +17,7 @@ const handleWebhookEvent = async (req: Request, res: Response) => {
 
     switch (type) {
         case "push":
+            console.log("Handling push event");
             pushEventService(payload);
             break;
 
@@ -28,7 +29,7 @@ const handleWebhookEvent = async (req: Request, res: Response) => {
 
     res.sendStatus(200);
 
-    // console.log(`Received event: ${type}`);
+    console.log(`Done with event: ${type}`);
 };
 
 export { handleWebhookEvent };
