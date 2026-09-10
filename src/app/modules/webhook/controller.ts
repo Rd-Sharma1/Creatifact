@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { pushEventService } from "./service.js";
+import { pushEventService } from "../github/GithubEventServices.js";
 
 const handleWebhookEvent = async (req: Request, res: Response) => {
     console.log("Received webhook event");

@@ -1,3 +1,4 @@
+import GithubServices from "../github/GithubRetrievalService.js";
 import { inngest } from "./client.js";
 
 const fetchGithubDetails = inngest.createFunction(
@@ -12,11 +13,16 @@ const fetchGithubDetails = inngest.createFunction(
     },
     async ({ event, step }) => {
         //Step 1: get the details from event
+
         console.log("Push Event triggered");
-        await step.sleep("slow-api-capp", "10s");
-        const result = await step.run("github-output", () => {
-            console.log("Github Output is here");
-            console.log("data:", event.data);
+        const { installationId, owner, repositoryName, before, after } = event.data;
+
+        const basehead = `${before}...${after}`;
+
+        const result = await step.run("github-changes-retrieval-call", () => {
+            //Step 1
+            console.log("Retreiving commit change info from github");
+            return GithubServices.compareCommits({ repositoryName, owner, basehead, installationId });
         });
         return console.log("+============+\n Call Successfull");
     },
