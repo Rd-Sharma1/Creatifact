@@ -41,7 +41,7 @@ const pushEventService = async (payload: any) => {
         compare: string
 }   
     */
-    inngest.send({
+    await inngest.send({
         name: "github/push.received",
         data: {
             installationId: payload.installation.id,

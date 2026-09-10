@@ -24,15 +24,30 @@ class GithubServices {
                 },
             },
         );
-        console.log(
-            commitCompareRes.data.files?.map((file: any) => ({
-                filename: file.filename,
-                status: file.status,
-                additions: file.additions,
-                deletions: file.deletions,
-                patch: file.patch,
-            })),
-        );
+
+        const changes = commitCompareRes.data.files?.map((file: any) => ({
+            filename: file.filename,
+            status: file.status,
+            additions: file.additions,
+            deletions: file.deletions,
+            patch: file.patch,
+        }));
+
+        const commits = commitCompareRes.data.commits?.map((commit: any) => ({
+            sha: commit.sha,
+            message: commit.commit.message,
+            author: commit.author?.login ?? commit.commit.author?.name,
+            timestamp: commit.commit.author?.date,
+            url: commit.html_url,
+        }));
+
+        return {
+            repository: `${owner}/${repositoryName}`,
+            basehead,
+            changes,
+            commits,
+        };
+
         // console.log("CommitCompareRes: ", commitCompareRes);
     }
 }

@@ -19,12 +19,15 @@ const fetchGithubDetails = inngest.createFunction(
 
         const basehead = `${before}...${after}`;
 
-        const result = await step.run("github-changes-retrieval-call", () => {
+        const result = await step.run("github-changes-retrieval-call", async () => {
             //Step 1
             console.log("Retreiving commit change info from github");
-            return GithubServices.compareCommits({ repositoryName, owner, basehead, installationId });
+
+            const changeSet = await GithubServices.compareCommits({ repositoryName, owner, basehead, installationId });
+            return changeSet;
         });
-        return console.log("+============+\n Call Successfull");
+        console.log("+============+\n Call Successfull");
+        return result;
     },
 );
 
