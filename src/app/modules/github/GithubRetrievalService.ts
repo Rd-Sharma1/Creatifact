@@ -1,6 +1,6 @@
 import getGithubClient from "./GithubAuthService.js";
 
-interface compareCommitsPayload {
+interface retrieveChangesetPayload {
     before?: string;
     after?: string;
     repositoryName: string;
@@ -10,7 +10,7 @@ interface compareCommitsPayload {
 }
 
 class GithubServices {
-    static async compareCommits({ basehead, repositoryName, owner, installationId }: compareCommitsPayload) {
+    static async retrieveChangeset({ basehead, repositoryName, owner, installationId }: retrieveChangesetPayload) {
         const octokitClient = getGithubClient(installationId);
 
         const commitCompareRes = await octokitClient.request(

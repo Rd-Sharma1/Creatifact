@@ -1,3 +1,4 @@
+import ChangeSetService from "../changeset/service.js";
 import GithubServices from "../github/GithubRetrievalService.js";
 import { inngest } from "./client.js";
 
@@ -19,15 +20,23 @@ const fetchGithubDetails = inngest.createFunction(
 
         const basehead = `${before}...${after}`;
 
-        const result = await step.run("github-changes-retrieval-call", async () => {
+        const changeSet = await step.run("github-changes-retrieval-call", async () => {
             //Step 1
             console.log("Retreiving commit change info from github");
 
-            const changeSet = await GithubServices.compareCommits({ repositoryName, owner, basehead, installationId });
+            const changeSet = await GithubServices.retrieveChangeset({
+                repositoryName,
+                owner,
+                basehead,
+                installationId,
+            });
             return changeSet;
         });
+        const savedChangeSet = await step.run("persist-change-set", async () => {
+            return ChangeSetService.create(changeSet);
+        });
         console.log("+============+\n Call Successfull");
-        return result;
+        return savedChangeSet;
     },
 );
 

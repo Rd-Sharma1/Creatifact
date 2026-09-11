@@ -10,10 +10,14 @@
     "scripts": {
         "start": "node dist/index",
         "build": "tsc -p .",
-        "dev": "tsc-watch --onSuccess \"node dist/index\""
+        "dev": "tsc-watch --onSuccess \"node dist/index\"",
+        "db:generate": "drizzle-kit generate",
+        "db:migrate": "drizzle-kit migrate",
+        "test-db-push": "node dist/app/modules/changeset/index"
     },
     "dependencies": {
         "dotenv": "^17.4.2",
+        "drizzle-orm": "^0.45.2",
         "express": "^5.2.1",
         "inngest": "^4.19.0",
         "octokit": "^5.0.5",
@@ -24,8 +28,9 @@
         "@types/express": "^5.0.6",
         "@types/node": "^26.2.0",
         "@types/pg": "^8.23.1",
+        "drizzle-kit": "^0.31.10",
         "tsc-watch": "^7.2.1",
-        "tsx": "^4.23.12",
+        "tsx": "^4.23.13",
         "typescript": "^7.0.2"
     }
 }
