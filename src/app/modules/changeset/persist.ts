@@ -1,7 +1,7 @@
 import { db } from "../../../db/index.js";
 import { changeSetTable } from "../../../db/schema.js";
 
-export async function createChangeSet(changeSet: any) {
+export async function persistChangeSet(changeSet: any) {
     const [created] = await db
         .insert(changeSetTable)
         .values({
@@ -12,7 +12,7 @@ export async function createChangeSet(changeSet: any) {
         })
         .returning({
             id: changeSetTable.id,
-        });
-
+        })
+        .onConflictDoNothing();
     return created;
 }

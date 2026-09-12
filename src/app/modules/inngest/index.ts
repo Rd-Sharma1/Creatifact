@@ -2,10 +2,10 @@ import ChangeSetService from "../changeset/service.js";
 import GithubServices from "../github/GithubRetrievalService.js";
 import { inngest } from "./client.js";
 
-const fetchGithubDetails = inngest.createFunction(
+const inngestRetrieverWorkflow = inngest.createFunction(
     {
-        id: "fetch-detail",
-        name: "github webhook details needed",
+        id: "retrieve-changeset",
+        name: "changeSet retrieval worflow",
         triggers: [
             {
                 event: "github/push.received",
@@ -13,16 +13,15 @@ const fetchGithubDetails = inngest.createFunction(
         ],
     },
     async ({ event, step }) => {
-        //Step 1: get the details from event
-
         console.log("Push Event triggered");
         const { installationId, owner, repositoryName, before, after } = event.data;
 
         const basehead = `${before}...${after}`;
 
         const changeSet = await step.run("github-changes-retrieval-call", async () => {
-            //Step 1
-            console.log("Retreiving commit change info from github");
+            //Step 1 Retrieving commmit info from github
+
+            console.log("Starting changeSet Retrieval step");
 
             const changeSet = await GithubServices.retrieveChangeset({
                 repositoryName,
@@ -30,14 +29,46 @@ const fetchGithubDetails = inngest.createFunction(
                 basehead,
                 installationId,
             });
+
             return changeSet;
         });
+
         const savedChangeSet = await step.run("persist-change-set", async () => {
-            return ChangeSetService.create(changeSet);
+            // Step 2 Persisting the changeSet
+            console.log("Starting changeSet persistance step");
+
+            return ChangeSetService.persist(changeSet);
         });
-        console.log("+============+\n Call Successfull");
-        return savedChangeSet;
+
+        await step.sendEvent("changeset-created", {
+            //Step 3 Emitting changeSet create event for generator workflow
+            name: "github/changeset.created",
+            data: {
+                changeSetId: savedChangeSet?.id.toString(),
+            },
+        });
+        console.log("\n+============+\n Retrieval Workflow success!");
     },
 );
 
-export const functions = [fetchGithubDetails];
+const inngestGeneratorWorkflow = inngest.createFunction(
+    {
+        id: "generate-artifact",
+        name: "artifact generation workflow",
+        triggers: [
+            {
+                event: "github/changeset.created",
+            },
+        ],
+    },
+    async ({ event, step }) => {
+        console.log("Generator workflow triggered");
+        const changeSetId = event.data?.id;
+
+        const changeSet = await step.run("fetch-changeSet", async () => {
+            return ChangeSetService.fetch(changeSetId);
+        });
+    },
+);
+
+export const functions = [inngestRetrieverWorkflow, inngestGeneratorWorkflow];
