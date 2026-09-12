@@ -63,7 +63,7 @@ const inngestGeneratorWorkflow = inngest.createFunction(
     },
     async ({ event, step }) => {
         console.log("Generator workflow triggered");
-        const changeSetId = event.data?.id;
+        const changeSetId = event.data?.changeSetId;
 
         const changeSet = await step.run("fetch-changeSet", async () => {
             return ChangeSetService.fetch(changeSetId);
