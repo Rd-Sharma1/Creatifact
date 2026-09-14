@@ -44,7 +44,7 @@ const inngestRetrieverWorkflow = inngest.createFunction(
             //Step 3 Emitting changeSet create event for generator workflow
             name: "github/changeset.created",
             data: {
-                changeSetId: savedChangeSet?.id.toString(),
+                changeSetId: savedChangeSet?.toString(),
             },
         });
         console.log("\n+============+\n Retrieval Workflow success!");
