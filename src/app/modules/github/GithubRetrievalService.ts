@@ -1,16 +1,18 @@
 import getGithubClient from "./GithubAuthService.js";
+import type { RetrievedChangeSet } from "../../../domain/types.js";
+import type { GitHubCompareResponse } from "./compareTypes.js";
 
-interface retrieveChangesetPayload {
-    before?: string;
-    after?: string;
+interface RetrieveChangeSetPayload {
     repositoryName: string;
     owner: string;
+    base: string;
+    head: string;
     basehead: string;
     installationId: number;
 }
 
 class GithubServices {
-    static async retrieveChangeset({ basehead, repositoryName, owner, installationId }: retrieveChangesetPayload) {
+    static async retrieveChangeset({ base, head, basehead, repositoryName, owner, installationId }: RetrieveChangeSetPayload): Promise<RetrievedChangeSet> {
         const octokitClient = getGithubClient(installationId);
 
         const commitCompareRes = await octokitClient.request(
@@ -25,30 +27,36 @@ class GithubServices {
             },
         );
 
-        const changes = commitCompareRes.data.files?.map((file: any) => ({
+        const compare = commitCompareRes.data as GitHubCompareResponse;
+
+        const changes = (compare.files ?? []).map(file => ({
             filename: file.filename,
+            previousFilename: file.previous_filename ?? null,
             status: file.status,
             additions: file.additions,
             deletions: file.deletions,
-            patch: file.patch,
+            changes: file.changes,
+            patch: file.patch ?? null,
         }));
 
-        const commits = commitCompareRes.data.commits?.map((commit: any) => ({
+        const commits = (compare.commits ?? []).map(commit => ({
             sha: commit.sha,
             message: commit.commit.message,
-            author: commit.author?.login ?? commit.commit.author?.name,
-            timestamp: commit.commit.author?.date,
+            author: {
+                name: commit.commit.author?.name ?? null,
+                username: commit.author?.login ?? null,
+            },
+            timestamp: commit.commit.author?.date ?? null,
             url: commit.html_url,
         }));
 
         return {
-            repository: `${owner}/${repositoryName}`,
+            base,
+            head,
             basehead,
             changes,
             commits,
         };
-
-        // console.log("CommitCompareRes: ", commitCompareRes);
     }
 }
 

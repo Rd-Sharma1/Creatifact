@@ -46,7 +46,7 @@ const pushEventService = async (payload: any) => {
         data: {
             installationId: payload.installation.id,
             ref,
-            repositoryId: repository.id,
+            githubRepoId: repository.id,
             repositoryName: repository.name,
             owner: repository.owner.login,
             before,
