@@ -13,6 +13,23 @@ such as social posts, using GitHub activity as durable engineering history.
 - Do not introduce vector DBs, embeddings, semantic retrieval, agents,
   or other future architecture unless explicitly requested.
 
+## Decision Ownership
+
+The human is responsible for product and architecture decisions.
+
+The coding agent is responsible for implementation.
+
+Do not independently change:
+
+- domain boundaries
+- database ownership/relationships
+- event semantics
+- API contracts
+- major infrastructure choices
+
+If implementation reveals a genuine architectural ambiguity, stop and surface
+the ambiguity rather than silently choosing a new direction.
+
 ## Domain Model
 
 - Repository = Creatifact's internal representation of a GitHub repository.
