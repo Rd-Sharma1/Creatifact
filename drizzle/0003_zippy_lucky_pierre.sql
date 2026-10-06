@@ -1,0 +1,1 @@
+ALTER TABLE "artifacts" ADD CONSTRAINT "artifacts_artifact_request_id_type_unique" UNIQUE("artifact_request_id","type");

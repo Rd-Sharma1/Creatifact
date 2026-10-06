@@ -4,6 +4,14 @@ export type ArtifactRequestStatus = (typeof ARTIFACT_REQUEST_STATUSES)[number];
 export const ARTIFACT_TYPES = ["X_POST", "LINKEDIN_POST"] as const;
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
+export type ArtifactRequestScope =
+    | { type: "TODAY" }
+    | { type: "YESTERDAY" }
+    | { type: "THIS_WEEK" }
+    | { type: "LAST_WEEK" }
+    | { type: "LATEST" }
+    | { type: "DATE_RANGE"; from: string; to: string };
+
 export type Repository = {
     id: string;
     githubRepoId: bigint;

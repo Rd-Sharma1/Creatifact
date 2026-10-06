@@ -1,6 +1,17 @@
-import { bigint, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
-import { ARTIFACT_REQUEST_STATUSES, ARTIFACT_TYPES } from "../domain/types.js";
+import {
+    bigint,
+    jsonb,
+    pgEnum,
+    pgTable,
+    primaryKey,
+    text,
+    timestamp,
+    unique,
+    uuid,
+    varchar,
+} from "drizzle-orm/pg-core";
 import type { ChangeSetChange, ChangeSetCommit } from "../domain/types.js";
+import { ARTIFACT_REQUEST_STATUSES, ARTIFACT_TYPES } from "../domain/types.js";
 
 export const artifactRequestStatusEnum = pgEnum("artifact_request_status", ARTIFACT_REQUEST_STATUSES);
 export const artifactTypeEnum = pgEnum("artifact_type", ARTIFACT_TYPES);
@@ -36,18 +47,22 @@ export const user_repository = pgTable(
     ],
 );
 
-export const changeSetTable = pgTable("change_sets", {
-    id: uuid("id").primaryKey().defaultRandom(),
-    repositoryId: uuid("repository_id")
-        .notNull()
-        .references(() => repository.id),
-    base: varchar("base", { length: 100 }).notNull(),
-    head: varchar("head", { length: 100 }).notNull(),
-    basehead: varchar("basehead", { length: 100 }).notNull(),
-    changes: jsonb("changes").$type<ChangeSetChange[]>().notNull(),
-    commits: jsonb("commits").$type<ChangeSetCommit[]>().notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-}, table => [unique("change_sets_repository_id_basehead_unique").on(table.repositoryId, table.basehead)]);
+export const changeSetTable = pgTable(
+    "change_sets",
+    {
+        id: uuid("id").primaryKey().defaultRandom(),
+        repositoryId: uuid("repository_id")
+            .notNull()
+            .references(() => repository.id),
+        base: varchar("base", { length: 100 }).notNull(),
+        head: varchar("head", { length: 100 }).notNull(),
+        basehead: varchar("basehead", { length: 100 }).notNull(),
+        changes: jsonb("changes").$type<ChangeSetChange[]>().notNull(),
+        commits: jsonb("commits").$type<ChangeSetCommit[]>().notNull(),
+        createdAt: timestamp("created_at").defaultNow().notNull(),
+    },
+    table => [unique("change_sets_repository_id_basehead_unique").on(table.repositoryId, table.basehead)],
+);
 
 export const artifactRequestTable = pgTable("artifact_requests", {
     id: uuid("id").primaryKey().defaultRandom(),
@@ -59,6 +74,17 @@ export const artifactRequestTable = pgTable("artifact_requests", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const artifactRequestTypeTable = pgTable(
+    "artifact_request_type",
+    {
+        artifactRequestId: uuid("artifact_request_id")
+            .notNull()
+            .references(() => artifactRequestTable.id),
+        type: artifactTypeEnum("type").notNull(),
+    },
+    table => [primaryKey({ columns: [table.artifactRequestId, table.type] })],
+);
 
 export const artifactRequestChangeSetTable = pgTable(
     "artifact_request_changeset",
@@ -73,12 +99,16 @@ export const artifactRequestChangeSetTable = pgTable(
     table => [primaryKey({ columns: [table.artifactRequestId, table.changeSetId] })],
 );
 
-export const artifactTable = pgTable("artifacts", {
-    id: uuid("id").primaryKey().defaultRandom(),
-    artifactRequestId: uuid("artifact_request_id")
-        .notNull()
-        .references(() => artifactRequestTable.id),
-    type: artifactTypeEnum("type").notNull(),
-    content: text("content").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const artifactTable = pgTable(
+    "artifacts",
+    {
+        id: uuid("id").primaryKey().defaultRandom(),
+        artifactRequestId: uuid("artifact_request_id")
+            .notNull()
+            .references(() => artifactRequestTable.id),
+        type: artifactTypeEnum("type").notNull(),
+        content: text("content").notNull(),
+        createdAt: timestamp("created_at").defaultNow().notNull(),
+    },
+    table => [unique("artifacts_artifact_request_id_type_unique").on(table.artifactRequestId, table.type)],
+);

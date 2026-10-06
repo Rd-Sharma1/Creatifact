@@ -3,6 +3,7 @@ import express from "express";
 import { serve } from "inngest/express";
 import { inngest } from "./modules/inngest/client.js";
 import { functions } from "./modules/inngest/index.js";
+import { artifactRequestRouter } from "./modules/artifact-request/routes.js";
 import { webhookRouter } from "./modules/webhook/routes.js";
 
 export function createApplications(): Express {
@@ -14,6 +15,8 @@ export function createApplications(): Express {
 
     //Middleware
     app.use(express.json());
+
+    app.use("/api/artifact-requests", artifactRequestRouter);
 
     app.use(
         // Expose the middleware on our recommended path at `/api/inngest`.
