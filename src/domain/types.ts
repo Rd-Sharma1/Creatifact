@@ -72,3 +72,15 @@ export type Artifact = {
     content: string;
     createdAt: Date;
 };
+
+export type ArtifactGenerationContext = {
+    artifactRequest: Pick<ArtifactRequest, "id" | "instructions">;
+    repository: Pick<Repository, "id" | "owner" | "name">;
+    requestedArtifactTypes: ArtifactType[];
+    changeSets: ChangeSet[];
+};
+
+export type GeneratedArtifactResult = {
+    type: ArtifactType;
+    content: string;
+};

@@ -10,7 +10,7 @@
     "scripts": {
         "start": "node dist/index",
         "build": "tsc -p .",
-        "test": "node --import tsx --input-type=module -e \"await import('./src/app/modules/artifact-request/scope/ScopeResolver.test.ts')\"",
+        "test": "node --import tsx --input-type=module -e \"await Promise.all([import('./src/app/modules/artifact-request/scope/ScopeResolver.test.ts'), import('./src/app/modules/artifact-generation/ArtifactGeneration.test.ts')])\"",
         "dev": "tsc-watch --onSuccess \"node dist/index\"",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
