@@ -29,8 +29,39 @@ export const changeSetRoleEnum = pgEnum("artifact_request_changeset_role", CHANG
 
 export const user = pgTable("user", {
     id: uuid("id").primaryKey().defaultRandom(),
+    githubUserId: bigint("github_user_id", { mode: "bigint" }).unique(),
     githubName: varchar("github_name", { length: 100 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const authSessionTable = pgTable("auth_sessions", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
+    userId: uuid("user_id").notNull().references(() => user.id),
+    expiresAt: timestamp("expires_at").notNull(),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const githubOAuthStateTable = pgTable("github_oauth_states", {
+    stateHash: varchar("state_hash", { length: 64 }).primaryKey(),
+    intent: varchar("intent", { length: 16 }).notNull(),
+    userId: uuid("user_id").references(() => user.id),
+    expiresAt: timestamp("expires_at").notNull(),
+    consumedAt: timestamp("consumed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const githubInstallationTable = pgTable("github_installations", {
+    id: uuid("id").primaryKey().defaultRandom(),
+    githubInstallationId: bigint("github_installation_id", { mode: "bigint" }).notNull().unique(),
+    userId: uuid("user_id").references(() => user.id),
+    accountGithubId: bigint("account_github_id", { mode: "bigint" }).notNull(),
+    accountLogin: varchar("account_login", { length: 100 }).notNull(),
+    accountType: varchar("account_type", { length: 32 }).notNull(),
+    suspendedAt: timestamp("suspended_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const repository = pgTable("repository", {
@@ -56,6 +87,15 @@ export const user_repository = pgTable(
             columns: [table.userId, table.repositoryId],
         }),
     ],
+);
+
+export const githubInstallationRepositoryTable = pgTable(
+    "github_installation_repository",
+    {
+        installationId: uuid("installation_id").notNull().references(() => githubInstallationTable.id),
+        repositoryId: uuid("repository_id").notNull().references(() => repository.id),
+    },
+    table => [primaryKey({ columns: [table.installationId, table.repositoryId] })],
 );
 
 export const changeSetTable = pgTable(

@@ -43,6 +43,20 @@
       "when": 1791794897352,
       "tag": "0005_clever_natasha_romanoff",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792521446008,
+      "tag": "0006_striped_captain_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792521520565,
+      "tag": "0007_perpetual_slapstick",
+      "breakpoints": true
     }
   ]
 }
