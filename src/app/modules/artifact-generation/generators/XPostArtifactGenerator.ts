@@ -1,13 +1,12 @@
 import type { ArtifactGenerator } from "../../../../domain/ArtifactGenerator.js";
-import type { ArtifactGenerationContext, GeneratedArtifactResult } from "../../../../domain/types.js";
+import type { ArtifactGenerationContext, GeneratedArtifactCandidates } from "../../../../domain/types.js";
+import { OpenRouterCandidateGenerator } from "../OpenRouterCandidateGenerator.js";
 
 export class XPostArtifactGenerator implements ArtifactGenerator {
     readonly artifactType = "X_POST" as const;
+    private readonly generator = new OpenRouterCandidateGenerator(this.artifactType);
 
-    async generate(_context: ArtifactGenerationContext): Promise<GeneratedArtifactResult> {
-        return {
-            type: this.artifactType,
-            content: "X_POST generation is not implemented yet.",
-        };
+    generate(context: ArtifactGenerationContext): Promise<GeneratedArtifactCandidates> {
+        return this.generator.generate(context);
     }
 }

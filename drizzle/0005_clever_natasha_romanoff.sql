@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "artifact_candidates_one_selected_per_type_unique" ON "artifact_candidates" USING btree ("artifact_request_id","type") WHERE "artifact_candidates"."status" = 'SELECTED';

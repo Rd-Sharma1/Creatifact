@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
+import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { db } from "../../../../db/index.js";
 import { changeSetTable } from "../../../../db/schema.js";
 import type { ArtifactRequestScope, ChangeSet } from "../../../../domain/types.js";
@@ -8,9 +8,13 @@ export type ScopeDateBounds = {
     toExclusive: Date;
 };
 
+export type ScopedChangeSet = Pick<ChangeSet, "id" | "repositoryId" | "createdAt">;
+
+const MAX_SCOPE_MATCHES = 200;
+
 export interface ChangeSetScopeStore {
-    findCreatedBetween(repositoryId: string, bounds: ScopeDateBounds): Promise<ChangeSet[]>;
-    findLatest(repositoryId: string): Promise<ChangeSet | undefined>;
+    findCreatedBetween(repositoryId: string, bounds: ScopeDateBounds): Promise<ScopedChangeSet[]>;
+    findLatest(repositoryId: string): Promise<ScopedChangeSet | undefined>;
 }
 
 export function getScopeDateBounds(scope: Exclude<ArtifactRequestScope, { type: "LATEST" }>, now = new Date()): ScopeDateBounds {
@@ -48,9 +52,9 @@ export function getScopeDateBounds(scope: Exclude<ArtifactRequestScope, { type: 
 }
 
 class DrizzleChangeSetScopeStore implements ChangeSetScopeStore {
-    async findCreatedBetween(repositoryId: string, bounds: ScopeDateBounds): Promise<ChangeSet[]> {
+    async findCreatedBetween(repositoryId: string, bounds: ScopeDateBounds): Promise<ScopedChangeSet[]> {
         return db
-            .select()
+            .select({ id: changeSetTable.id, repositoryId: changeSetTable.repositoryId, createdAt: changeSetTable.createdAt })
             .from(changeSetTable)
             .where(
                 and(
@@ -59,12 +63,13 @@ class DrizzleChangeSetScopeStore implements ChangeSetScopeStore {
                     lt(changeSetTable.createdAt, bounds.toExclusive),
                 ),
             )
-            .orderBy(asc(changeSetTable.createdAt), asc(changeSetTable.id));
+            .orderBy(desc(changeSetTable.createdAt), desc(changeSetTable.id))
+            .limit(MAX_SCOPE_MATCHES);
     }
 
-    async findLatest(repositoryId: string): Promise<ChangeSet | undefined> {
+    async findLatest(repositoryId: string): Promise<ScopedChangeSet | undefined> {
         const [latest] = await db
-            .select()
+            .select({ id: changeSetTable.id, repositoryId: changeSetTable.repositoryId, createdAt: changeSetTable.createdAt })
             .from(changeSetTable)
             .where(eq(changeSetTable.repositoryId, repositoryId))
             .orderBy(desc(changeSetTable.createdAt), desc(changeSetTable.id))
@@ -76,7 +81,7 @@ class DrizzleChangeSetScopeStore implements ChangeSetScopeStore {
 export class ScopeResolver {
     constructor(private readonly store: ChangeSetScopeStore = new DrizzleChangeSetScopeStore()) {}
 
-    async resolve(repositoryId: string, scope: ArtifactRequestScope, now = new Date()): Promise<ChangeSet[]> {
+    async resolve(repositoryId: string, scope: ArtifactRequestScope, now = new Date()): Promise<ScopedChangeSet[]> {
         if (scope.type === "LATEST") {
             const latest = await this.store.findLatest(repositoryId);
             return latest ? [latest] : [];

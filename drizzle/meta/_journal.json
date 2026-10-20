@@ -29,6 +29,20 @@
       "when": 1791306315177,
       "tag": "0003_zippy_lucky_pierre",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791794563925,
+      "tag": "0004_kind_songbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791794897352,
+      "tag": "0005_clever_natasha_romanoff",
+      "breakpoints": true
     }
   ]
 }

@@ -24,7 +24,7 @@ export const artifactRequestCreateSchema = z.object({
         z.object({ type: z.literal("LAST_WEEK") }),
         z.object({ type: z.literal("LATEST") }),
         dateRangeScopeSchema,
-    ]),
+    ]).optional(),
     instructions: z.string().nullable().optional(),
 });
 

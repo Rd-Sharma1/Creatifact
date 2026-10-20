@@ -1,4 +1,4 @@
-import type { ArtifactGenerationContext, ArtifactType, GeneratedArtifactResult } from "../../../domain/types.js";
+import type { ArtifactGenerationContext, ArtifactType, GeneratedArtifactCandidates } from "../../../domain/types.js";
 import { artifactGeneratorRegistry, ArtifactGeneratorRegistry } from "./ArtifactGeneratorRegistry.js";
 import { artifactGenerationContextService, ArtifactGenerationContextService } from "./ArtifactGenerationContextService.js";
 
@@ -12,16 +12,16 @@ export class ArtifactGenerationService {
         return this.contextService.build(artifactRequestId);
     }
 
-    async generateType(context: ArtifactGenerationContext, type: ArtifactType): Promise<GeneratedArtifactResult> {
+    async generateType(context: ArtifactGenerationContext, type: ArtifactType): Promise<GeneratedArtifactCandidates> {
         const generator = this.generatorRegistry.resolve(type);
         const result = await generator.generate(context);
-        if (result.type !== type) {
+        if (result.type !== type || result.candidates.length < 1 || result.candidates.length > 2) {
             throw new Error(`ArtifactGenerator for ${type} returned ${result.type}`);
         }
         return result;
     }
 
-    async generate(artifactRequestId: string): Promise<GeneratedArtifactResult[]> {
+    async generate(artifactRequestId: string): Promise<GeneratedArtifactCandidates[]> {
         const context = await this.buildContext(artifactRequestId);
         return Promise.all(context.requestedArtifactTypes.map(type => this.generateType(context, type)));
     }

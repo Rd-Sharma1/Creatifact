@@ -25,15 +25,16 @@ const changeSet: ChangeSet = {
 };
 
 const context: ArtifactGenerationContext = {
-    artifactRequest: { id: "request-id", instructions: "Emphasize user impact." },
+    artifactRequest: { id: "request-id", instructions: "Emphasize user impact.", scope: { type: "LATEST" } },
     repository: { id: "repository-id", owner: "example", name: "project" },
     requestedArtifactTypes: ["X_POST", "LINKEDIN_POST"],
-    changeSets: [changeSet],
+    changeSets: [{ role: "TARGET", changeSet }],
+    evidence: [],
 };
 
 class FakeContextReader implements ArtifactGenerationContextReader {
     async getArtifactRequest() {
-        return { id: context.artifactRequest.id, repositoryId: context.repository.id, instructions: context.artifactRequest.instructions };
+        return { id: context.artifactRequest.id, repositoryId: context.repository.id, instructions: context.artifactRequest.instructions, scope: context.artifactRequest.scope };
     }
 
     async getRepository(repositoryId: string) {
@@ -56,8 +57,8 @@ describe("Artifact generation domain boundary", () => {
         assert.equal(artifactGeneratorRegistry.resolve("LINKEDIN_POST").artifactType, "LINKEDIN_POST");
 
         const registry = new ArtifactGeneratorRegistry([
-            { artifactType: "X_POST", generate: async () => ({ type: "X_POST", content: "x" }) },
-            { artifactType: "LINKEDIN_POST", generate: async () => ({ type: "LINKEDIN_POST", content: "linkedin" }) },
+            { artifactType: "X_POST", generate: async () => ({ type: "X_POST", candidates: [{ angle: "x", content: "x", claims: [{ claim: "x", evidence: [] }] }] }) },
+            { artifactType: "LINKEDIN_POST", generate: async () => ({ type: "LINKEDIN_POST", candidates: [{ angle: "linkedin", content: "linkedin", claims: [{ claim: "linkedin", evidence: [] }] }] }) },
         ]);
 
         assert.equal(registry.resolve("X_POST").artifactType, "X_POST");
@@ -82,7 +83,7 @@ describe("Artifact generation domain boundary", () => {
                 async generate(receivedContext) {
                     assert.equal(receivedContext, context);
                     generated.push("X_POST");
-                    return { type: "X_POST", content: "x result" };
+                    return { type: "X_POST", candidates: [{ angle: "x", content: "x result", claims: [{ claim: "x result", evidence: [] }] }] };
                 },
             },
             {
@@ -90,7 +91,7 @@ describe("Artifact generation domain boundary", () => {
                 async generate(receivedContext) {
                     assert.equal(receivedContext, context);
                     generated.push("LINKEDIN_POST");
-                    return { type: "LINKEDIN_POST", content: "linkedin result" };
+                    return { type: "LINKEDIN_POST", candidates: [{ angle: "linkedin", content: "linkedin result", claims: [{ claim: "linkedin result", evidence: [] }] }] };
                 },
             },
         ];
@@ -101,8 +102,8 @@ describe("Artifact generation domain boundary", () => {
 
         assert.deepEqual(generated, ["X_POST", "LINKEDIN_POST"]);
         assert.deepEqual(results, [
-            { type: "X_POST", content: "x result" },
-            { type: "LINKEDIN_POST", content: "linkedin result" },
+            { type: "X_POST", candidates: [{ angle: "x", content: "x result", claims: [{ claim: "x result", evidence: [] }] }] },
+            { type: "LINKEDIN_POST", candidates: [{ angle: "linkedin", content: "linkedin result", claims: [{ claim: "linkedin result", evidence: [] }] }] },
         ]);
     });
 });
