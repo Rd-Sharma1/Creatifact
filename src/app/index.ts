@@ -1,4 +1,4 @@
-import type { ErrorRequestHandler, Express } from "express";
+import type { Express } from "express";
 import express from "express";
 import { serve } from "inngest/express";
 import { sql } from "drizzle-orm";
@@ -9,6 +9,8 @@ import { artifactRequestRouter } from "./modules/artifact-request/routes.js";
 import { webhookRouter } from "./modules/webhook/routes.js";
 import { requestContextMiddleware } from "./middleware/requestContext.js";
 import { authRouter, repositoryRouter } from "./modules/auth/routes.js";
+import { errorMiddleware } from "./common/errorMiddleware.js";
+import { ConfigurationError, DependencyUnavailableError, NotFoundError } from "./common/errors.js";
 
 export function createApplications(): Express {
     //Intialize express application
@@ -33,14 +35,13 @@ export function createApplications(): Express {
             missingConfiguration.push("AUTH_COOKIE_SECURE");
         }
         if (missingConfiguration.length > 0) {
-            res.status(503).json({ status: "not_ready", missingConfiguration });
-            return;
+            throw new ConfigurationError({ variables: missingConfiguration });
         }
         try {
             await db.execute(sql`select 1`);
             res.status(200).json({ status: "ready" });
-        } catch {
-            res.status(503).json({ status: "not_ready" });
+        } catch (error) {
+            throw new DependencyUnavailableError("database", { cause: error });
         }
     });
 
@@ -55,20 +56,8 @@ export function createApplications(): Express {
         res.send("Welcome to Creatifact!!");
     });
 
-    app.use((_req, res) => res.status(404).json({ error: "Not found" }));
-    const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
-        console.error(JSON.stringify({ event: "http.request.failed", requestId: res.locals.requestId, errorName: error instanceof Error ? error.name : "UnknownError" }));
-        if (res.headersSent) return;
-        const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number"
-            ? error.status
-            : 500;
-        if (status >= 400 && status < 500) {
-            res.status(status).json({ error: "Invalid request", requestId: res.locals.requestId });
-            return;
-        }
-        res.status(500).json({ error: "Internal server error", requestId: res.locals.requestId });
-    };
-    app.use(errorHandler);
+    app.use((_req, _res, next) => next(new NotFoundError("Route not found")));
+    app.use(errorMiddleware);
 
     return app;
 }

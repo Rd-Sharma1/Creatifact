@@ -2,6 +2,8 @@ import ChangeSetService from "../../changeset/service.js";
 import GithubServices from "../../github/GithubRetrievalService.js";
 import { resolveRepository } from "../../repository/resolve.js";
 import { inngest } from "../client.js";
+import { parseOrThrow } from "../../../common/validation.js";
+import { changeSetCreatedEventSchema, githubPushReceivedEventSchema } from "../eventSchemas.js";
 
 export const changeSetRetriever = inngest.createFunction(
     {
@@ -14,8 +16,7 @@ export const changeSetRetriever = inngest.createFunction(
         ],
     },
     async ({ event, step }) => {
-        console.log("Push Event triggered");
-        const { installationId, githubRepoId, owner, repositoryName, before, after } = event.data;
+        const { installationId, githubRepoId, owner, repositoryName, before, after } = parseOrThrow(githubPushReceivedEventSchema, event.data);
 
         const basehead = `${before}...${after}`;
 
@@ -51,12 +52,13 @@ export const changeSetRetriever = inngest.createFunction(
             return ChangeSetService.persist({ ...changeSet, repositoryId });
         });
 
+        if (!savedChangeSet) throw new Error("Persisting ChangeSet returned no row");
+        const createdEvent = parseOrThrow(changeSetCreatedEventSchema, { changeSetId: savedChangeSet });
+
         await step.sendEvent("changeset-created", {
             //Step 3 Emitting changeSet create event for generator workflow
             name: "github/changeset.created",
-            data: {
-                changeSetId: savedChangeSet?.toString(),
-            },
+            data: createdEvent,
         });
         console.log("\n+============+\n Retrieval Workflow success!");
     },

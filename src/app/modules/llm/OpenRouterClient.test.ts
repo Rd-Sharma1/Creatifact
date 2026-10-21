@@ -32,7 +32,7 @@ describe("OpenRouterClient", () => {
         const client = new OpenRouterClient("secret-test-key", fakeFetch);
         await assert.rejects(
             client.completeJson({ task: "scope", system: "s", user: "u", maxOutputTokens: 50, schema: outputSchema }),
-            error => error instanceof OpenRouterError && error.status === 429 && !error.message.includes("secret-test-key"),
+            error => error instanceof OpenRouterError && error.providerStatus === 429 && error.status === 503 && !error.message.includes("secret-test-key"),
         );
     });
 });

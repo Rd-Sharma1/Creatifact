@@ -1,5 +1,7 @@
 import { artifactGenerationOutboxService } from "../../artifact-request/ArtifactGenerationOutboxService.js";
 import { inngest } from "../client.js";
+import { parseOrThrow } from "../../../common/validation.js";
+import { artifactGenerationRequestedEventSchema } from "../eventSchemas.js";
 
 export const artifactGenerationOutbox = inngest.createFunction(
     {
@@ -18,7 +20,7 @@ export const artifactGenerationOutbox = inngest.createFunction(
         await step.sendEvent("send-generation-events", pending.map(item => ({
             id: item.id,
             name: "artifact/generation.requested" as const,
-            data: { artifactRequestId: item.artifactRequestId },
+            data: parseOrThrow(artifactGenerationRequestedEventSchema, { artifactRequestId: item.artifactRequestId }),
         })));
         await step.run("mark-generation-events-delivered", () => artifactGenerationOutboxService.markDelivered(ids));
         console.info(JSON.stringify({ event: "artifact_generation_outbox.batch_delivered", count: pending.length }));

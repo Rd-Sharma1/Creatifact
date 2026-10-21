@@ -8,6 +8,7 @@ import {
     repository,
 } from "../../../db/schema.js";
 import type { ArtifactGenerationChangeSet, ArtifactGenerationContext, ArtifactRequest, ArtifactType } from "../../../domain/types.js";
+import { NotFoundError } from "../../common/errors.js";
 import { evidenceBuilder, EvidenceBuilder } from "./EvidenceBuilder.js";
 
 export interface ArtifactGenerationContextReader {
@@ -19,17 +20,15 @@ export interface ArtifactGenerationContextReader {
     getLinkedChangeSets(artifactRequestId: string): Promise<ArtifactGenerationChangeSet[]>;
 }
 
-export class ArtifactRequestNotFoundError extends Error {
-    constructor(artifactRequestId: string) {
-        super(`ArtifactRequest not found: ${artifactRequestId}`);
-        this.name = "ArtifactRequestNotFoundError";
+export class ArtifactRequestNotFoundError extends NotFoundError {
+    constructor(_artifactRequestId: string) {
+        super("ArtifactRequest not found");
     }
 }
 
-export class ArtifactGenerationRepositoryNotFoundError extends Error {
-    constructor(repositoryId: string) {
-        super(`Repository not found for ArtifactRequest: ${repositoryId}`);
-        this.name = "ArtifactGenerationRepositoryNotFoundError";
+export class ArtifactGenerationRepositoryNotFoundError extends NotFoundError {
+    constructor(_repositoryId: string) {
+        super("Repository not found for ArtifactRequest");
     }
 }
 

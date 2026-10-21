@@ -1,6 +1,7 @@
 import type { ArtifactGenerationContext, ArtifactType, GeneratedArtifactCandidates } from "../../../domain/types.js";
 import { artifactGeneratorRegistry, ArtifactGeneratorRegistry } from "./ArtifactGeneratorRegistry.js";
 import { artifactGenerationContextService, ArtifactGenerationContextService } from "./ArtifactGenerationContextService.js";
+import { DomainValidationError } from "../../common/errors.js";
 
 export class ArtifactGenerationService {
     constructor(
@@ -16,7 +17,7 @@ export class ArtifactGenerationService {
         const generator = this.generatorRegistry.resolve(type);
         const result = await generator.generate(context);
         if (result.type !== type || result.candidates.length < 1 || result.candidates.length > 2) {
-            throw new Error(`ArtifactGenerator for ${type} returned ${result.type}`);
+            throw new DomainValidationError("INVALID_GENERATOR_RESULT", "Artifact generator returned an invalid result");
         }
         return result;
     }

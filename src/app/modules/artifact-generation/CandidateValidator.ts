@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ArtifactCandidateEvidence, ArtifactEvidenceItem, ArtifactType, GenerationCandidateInput } from "../../../domain/types.js";
+import { DomainValidationError } from "../../common/errors.js";
 import { OpenRouterClient, openRouterClient } from "../llm/OpenRouterClient.js";
 import { sanitizeEvidenceForModel, sanitizeModelText } from "../llm/ModelInputSanitizer.js";
 
@@ -11,10 +12,9 @@ const evaluationSchema = z.object({
     reasons: z.array(z.string()).max(8),
 });
 
-export class CandidateValidationError extends Error {
+export class CandidateValidationError extends DomainValidationError {
     constructor(message: string) {
-        super(message);
-        this.name = "CandidateValidationError";
+        super("CANDIDATE_REJECTED", message);
     }
 }
 

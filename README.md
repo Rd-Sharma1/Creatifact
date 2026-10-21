@@ -10,7 +10,9 @@ Copy `.env.example` to `.env` and configure the database, GitHub App, OpenRouter
 
 ### Database preflight and tests
 
-The unit suite uses fakes and does not connect to PostgreSQL. Database integration tests use a dedicated connection configured as `TEST_DATABASE_URL`; they never fall back to `DATABASE_URL`. The test database name must end in `_test`, and it must differ from the application database. `npm run db:test:check` validates these conditions without connecting.
+The unit suite uses fakes and does not connect to PostgreSQL. `npm run build`, `npm test`, `git diff --check`, and `npm run db:test:check` can run without a database; the database guard only checks that an explicitly configured `TEST_DATABASE_URL` ends in `_test` and differs from `DATABASE_URL`. Database integration tests use that dedicated connection and never fall back to `DATABASE_URL`.
+
+`npm run db:preflight` is read-only, but it does connect to the explicitly configured `PREFLIGHT_DATABASE_URL` to inspect the migration journal and schema. It is not a database-free check. `npm run db:test:migrate`, `npm run test:integration`, and `npm run db:migrate` also require a database connection; the first two must target the isolated `_test` database, while the last must only be used under the reviewed application migration procedure below. If the isolated integration database has not been provisioned, treat integration tests and test migrations as blocked; do not point them at `DATABASE_URL`.
 
 To prepare a repeatable isolated PostgreSQL test database:
 

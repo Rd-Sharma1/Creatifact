@@ -1,14 +1,14 @@
 import "dotenv/config";
 import { z } from "zod";
+import { ConfigurationError, UpstreamProviderError } from "../../common/errors.js";
 
 const completionResponseSchema = z.object({
     choices: z.array(z.object({ message: z.object({ content: z.string().nullable() }) })).min(1),
 });
 
-export class OpenRouterError extends Error {
-    constructor(message: string, readonly status?: number, options?: ErrorOptions) {
-        super(message, options);
-        this.name = "OpenRouterError";
+export class OpenRouterError extends UpstreamProviderError {
+    constructor(_reason: string, status?: number, options?: ErrorOptions) {
+        super("OpenRouter", status, options);
     }
 }
 
@@ -29,14 +29,14 @@ export class OpenRouterClient {
         schema: z.ZodType<T>;
     }): Promise<T> {
         if (!this.apiKey) {
-            throw new OpenRouterError("OPENROUTER_API_KEY is not configured");
+            throw new ConfigurationError({ variables: ["OPENROUTER_API_KEY"] });
         }
 
         const model = input.task === "scope"
             ? process.env.OPENROUTER_SCOPE_MODEL
             : process.env.OPENROUTER_GENERATION_MODEL;
         if (!model) {
-            throw new OpenRouterError(`OPENROUTER_${input.task.toUpperCase()}_MODEL is not configured`);
+            throw new ConfigurationError({ variables: [`OPENROUTER_${input.task.toUpperCase()}_MODEL`] });
         }
 
         let response: Response;
@@ -78,24 +78,24 @@ export class OpenRouterClient {
 
         const parsedResponse = completionResponseSchema.safeParse(responseJson);
         if (!parsedResponse.success) {
-            throw new OpenRouterError("OpenRouter response did not contain a completion", response.status);
+            throw new OpenRouterError("Invalid completion response", response.status);
         }
 
         const content = parsedResponse.data.choices[0]?.message.content;
         if (!content) {
-            throw new OpenRouterError("OpenRouter returned an empty completion", response.status);
+            throw new OpenRouterError("Empty completion", response.status);
         }
 
         let output: unknown;
         try {
             output = JSON.parse(content);
         } catch (error) {
-            throw new OpenRouterError("OpenRouter returned malformed structured output", response.status, { cause: error });
+            throw new OpenRouterError("Malformed structured output", response.status, { cause: error });
         }
 
         const validated = input.schema.safeParse(output);
         if (!validated.success) {
-            throw new OpenRouterError("OpenRouter output failed application schema validation", response.status);
+            throw new OpenRouterError("Structured output validation failed", response.status);
         }
         return validated.data;
     }

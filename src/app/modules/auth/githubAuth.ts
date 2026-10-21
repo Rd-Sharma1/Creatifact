@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
+import { AuthenticationError, AuthorizationError, ConflictError, ConfigurationError, RequestValidationError, UpstreamProviderError } from "../../common/errors.js";
 import { db } from "../../../db/index.js";
 import {
     authSessionTable,
@@ -41,7 +42,7 @@ export type GithubOAuthIntent = "LOGIN" | "INSTALL";
 
 function requiredEnv(name: string): string {
     const value = process.env[name];
-    if (!value) throw new Error(`${name} is not configured`);
+    if (!value) throw new ConfigurationError({ variables: [name] });
     return value;
 }
 
@@ -117,27 +118,50 @@ export async function consumeOAuthFlow(state: string, cookieState: string | unde
 }
 
 async function githubJson<T>(url: string, init: RequestInit, schema: z.ZodType<T>): Promise<T> {
-    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(12_000) });
-    if (!response.ok) throw new Error(`GitHub request failed (${response.status})`);
-    const parsed = schema.safeParse(await response.json());
-    if (!parsed.success) throw new Error("GitHub response did not match the expected shape");
+    let response: Response;
+    try {
+        response = await fetch(url, { ...init, signal: AbortSignal.timeout(12_000) });
+    } catch (error) {
+        throw new UpstreamProviderError("GitHub", undefined, { cause: error });
+    }
+    if (!response.ok) throw new UpstreamProviderError("GitHub", response.status);
+    let body: unknown;
+    try {
+        body = await response.json();
+    } catch (error) {
+        throw new UpstreamProviderError("GitHub", response.status, { cause: error });
+    }
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) throw new UpstreamProviderError("GitHub", response.status);
     return parsed.data;
 }
 
 async function exchangeCode(code: string): Promise<string> {
-    const response = await fetch("https://github.com/login/oauth/access_token", {
-        method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({
-            client_id: requiredEnv("GITHUB_APP_CLIENT_ID"),
-            client_secret: requiredEnv("GITHUB_APP_CLIENT_SECRET"),
-            code,
-        }),
-        signal: AbortSignal.timeout(12_000),
-    });
-    if (!response.ok) throw new Error(`GitHub code exchange failed (${response.status})`);
-    const parsed = z.object({ access_token: z.string().min(1) }).safeParse(await response.json());
-    if (!parsed.success) throw new Error("GitHub did not return an access token");
+    let response: Response;
+    try {
+        response = await fetch("https://github.com/login/oauth/access_token", {
+            method: "POST",
+            headers: { Accept: "application/json", "Content-Type": "application/json" },
+            body: JSON.stringify({
+                client_id: requiredEnv("GITHUB_APP_CLIENT_ID"),
+                client_secret: requiredEnv("GITHUB_APP_CLIENT_SECRET"),
+                code,
+            }),
+            signal: AbortSignal.timeout(12_000),
+        });
+    } catch (error) {
+        if (error instanceof ConfigurationError) throw error;
+        throw new UpstreamProviderError("GitHub", undefined, { cause: error });
+    }
+    if (!response.ok) throw new UpstreamProviderError("GitHub", response.status);
+    let body: unknown;
+    try {
+        body = await response.json();
+    } catch (error) {
+        throw new UpstreamProviderError("GitHub", response.status, { cause: error });
+    }
+    const parsed = z.object({ access_token: z.string().min(1) }).safeParse(body);
+    if (!parsed.success) throw new UpstreamProviderError("GitHub", response.status);
     return parsed.data.access_token;
 }
 
@@ -200,13 +224,13 @@ async function listInstallationRepositories(accessToken: string, installationId:
 export async function syncVerifiedInstallation(userId: string, accessToken: string, installationId: number): Promise<void> {
     const installations = await listUserInstallations(accessToken);
     const verified = findVerifiedInstallation(installations, installationId, Number(requiredEnv("GITHUB_APP_ID")));
-    if (!verified) throw new Error("The installation is not available to this GitHub user");
+    if (!verified) throw new AuthorizationError("The installation is not available to this GitHub user");
     const repositories = await listInstallationRepositories(accessToken, installationId);
 
     await db.transaction(async tx => {
         const [existing] = await tx.select().from(githubInstallationTable)
             .where(eq(githubInstallationTable.githubInstallationId, BigInt(installationId))).for("update");
-        if (existing?.userId && existing.userId !== userId) throw new Error("This installation is already linked to another Creatifact user");
+        if (existing?.userId && existing.userId !== userId) throw new ConflictError("This installation is already linked to another Creatifact user");
         const [installation] = existing
             ? await tx.update(githubInstallationTable).set({
                 userId, accountGithubId: BigInt(verified.account.id), accountLogin: verified.account.login,
@@ -218,7 +242,7 @@ export async function syncVerifiedInstallation(userId: string, accessToken: stri
             }).onConflictDoNothing({ target: githubInstallationTable.githubInstallationId }).returning();
         const resolvedInstallation = installation ?? (await tx.select().from(githubInstallationTable)
             .where(eq(githubInstallationTable.githubInstallationId, BigInt(installationId))))[0];
-        if (!resolvedInstallation || resolvedInstallation.userId !== userId) throw new Error("Installation ownership changed during synchronization");
+        if (!resolvedInstallation || resolvedInstallation.userId !== userId) throw new ConflictError("Installation ownership changed during synchronization");
 
         const oldLinks = await tx.select({ repositoryId: githubInstallationRepositoryTable.repositoryId })
             .from(githubInstallationRepositoryTable).where(eq(githubInstallationRepositoryTable.installationId, resolvedInstallation.id));
@@ -397,18 +421,18 @@ export async function handleInstallationWebhook(input:
 
 export async function completeGithubCallback(input: { code: string; state: string; cookieState?: string; installationId?: number; currentUserId?: string }) {
     const flow = await consumeOAuthFlow(input.state, input.cookieState);
-    if (!flow) throw new Error("Invalid or expired OAuth state");
-    if (flow.intent === "INSTALL" && (!flow.userId || flow.userId !== input.currentUserId)) throw new Error("Installation flow user changed");
-    if (flow.intent === "LOGIN" && flow.userId) throw new Error("Invalid login flow");
+    if (!flow) throw new AuthenticationError("GitHub authorization could not be completed");
+    if (flow.intent === "INSTALL" && (!flow.userId || flow.userId !== input.currentUserId)) throw new AuthorizationError("Installation flow user changed");
+    if (flow.intent === "LOGIN" && flow.userId) throw new AuthenticationError("GitHub authorization could not be completed");
 
     const accessToken = await exchangeCode(input.code);
     const githubUser = await getGithubUser(accessToken);
     if (flow.intent === "INSTALL") {
-        if (!flow.userId || input.currentUserId !== flow.userId) throw new Error("Installation must be completed by the signed-in user");
+        if (!flow.userId || input.currentUserId !== flow.userId) throw new AuthorizationError("Installation must be completed by the signed-in user");
         const [current] = await db.select({ id: user.id, githubUserId: user.githubUserId }).from(user).where(eq(user.id, flow.userId));
-        if (!current || !isSameGithubUser(current.githubUserId, githubUser.id)) throw new Error("Installation must be authorized by the same GitHub user");
+        if (!current || !isSameGithubUser(current.githubUserId, githubUser.id)) throw new AuthorizationError("Installation must be authorized by the same GitHub user");
         const account = await upsertUser(githubUser);
-        if (!input.installationId) throw new Error("GitHub did not provide an installation identifier");
+        if (!input.installationId) throw new RequestValidationError(undefined, "GitHub did not provide an installation identifier");
         await syncVerifiedInstallation(flow.userId, accessToken, input.installationId);
         return { intent: flow.intent, userId: account.id };
     }

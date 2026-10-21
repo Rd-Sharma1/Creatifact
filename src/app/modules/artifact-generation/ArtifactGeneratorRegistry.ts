@@ -1,11 +1,11 @@
 import type { ArtifactGenerator } from "../../../domain/ArtifactGenerator.js";
+import { DomainValidationError } from "../../common/errors.js";
 import { LinkedInPostArtifactGenerator } from "./generators/LinkedInPostArtifactGenerator.js";
 import { XPostArtifactGenerator } from "./generators/XPostArtifactGenerator.js";
 
-export class UnsupportedArtifactTypeError extends Error {
+export class UnsupportedArtifactTypeError extends DomainValidationError {
     constructor(type: string) {
-        super(`No ArtifactGenerator registered for type: ${type}`);
-        this.name = "UnsupportedArtifactTypeError";
+        super("UNSUPPORTED_ARTIFACT_TYPE", `No ArtifactGenerator registered for type: ${type}`);
     }
 }
 

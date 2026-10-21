@@ -2,6 +2,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "../../../db/index.js";
 import { artifactCandidateTable, artifactRequestTable } from "../../../db/schema.js";
 import type { ArtifactCandidate, ArtifactRequestStatus, ArtifactType, GeneratedArtifactCandidates } from "../../../domain/types.js";
+import { ConflictError, DomainValidationError, NotFoundError } from "../../common/errors.js";
 
 export interface ArtifactGenerationPersistence {
     markGenerating(artifactRequestId: string): Promise<ArtifactRequestStatus>;
@@ -21,7 +22,7 @@ export class ArtifactGenerationPersistenceService implements ArtifactGenerationP
 
         const [current] = await db.select({ status: artifactRequestTable.status })
             .from(artifactRequestTable).where(eq(artifactRequestTable.id, artifactRequestId));
-        if (!current) throw new Error(`ArtifactRequest not found: ${artifactRequestId}`);
+        if (!current) throw new NotFoundError("ArtifactRequest not found");
         return current.status;
     }
 
@@ -34,7 +35,8 @@ export class ArtifactGenerationPersistenceService implements ArtifactGenerationP
 
         const [current] = await db.select({ status: artifactRequestTable.status })
             .from(artifactRequestTable).where(eq(artifactRequestTable.id, artifactRequestId));
-        if (!current || current.status !== "COMPLETED") throw new Error(`Cannot mark ArtifactRequest ${artifactRequestId} completed`);
+        if (!current) throw new NotFoundError("ArtifactRequest not found");
+        if (current.status !== "COMPLETED") throw new ConflictError("ArtifactRequest cannot be marked completed from its current state");
     }
 
     async markFailed(artifactRequestId: string): Promise<void> {
@@ -49,7 +51,7 @@ export class ArtifactGenerationPersistenceService implements ArtifactGenerationP
 
         const [current] = await db.select({ status: artifactRequestTable.status })
             .from(artifactRequestTable).where(eq(artifactRequestTable.id, artifactRequestId));
-        if (!current) throw new Error(`ArtifactRequest not found: ${artifactRequestId}`);
+        if (!current) throw new NotFoundError("ArtifactRequest not found");
     }
 
     async findCandidates(artifactRequestId: string, type: ArtifactType): Promise<ArtifactCandidate[]> {
@@ -60,7 +62,7 @@ export class ArtifactGenerationPersistenceService implements ArtifactGenerationP
 
     async persistCandidatesIfAbsent(artifactRequestId: string, result: GeneratedArtifactCandidates): Promise<ArtifactCandidate[]> {
         if (result.candidates.length < 1 || result.candidates.length > 2) {
-            throw new Error(`Expected one or two candidates for ${result.type}`);
+            throw new DomainValidationError("INVALID_CANDIDATE_COUNT", "Artifact generation must return one or two candidates");
         }
 
         return db.transaction(async tx => {

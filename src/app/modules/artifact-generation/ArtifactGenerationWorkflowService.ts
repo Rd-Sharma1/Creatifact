@@ -5,12 +5,13 @@ import type { ArtifactGenerationPersistence } from "./ArtifactGenerationPersiste
 import { artifactGenerationPersistence } from "./ArtifactGenerationPersistenceService.js";
 import type { ArtifactGenerationService } from "./ArtifactGenerationService.js";
 import { artifactGenerationService } from "./ArtifactGenerationService.js";
+import { ApplicationError, ConflictError } from "../../common/errors.js";
 
 export type ArtifactGenerationOutcome = { type: ArtifactType; candidates: ArtifactCandidate[] };
 
 export class ArtifactTypesGenerationFailedError extends Error {
     constructor(readonly failedTypes: ArtifactType[]) {
-        super(`Candidate generation failed for: ${failedTypes.join(", ")}`);
+        super("Candidate generation failed for one or more requested artifact types");
         this.name = "ArtifactTypesGenerationFailedError";
     }
 }
@@ -29,7 +30,7 @@ export class ArtifactGenerationWorkflowService {
     async run(artifactRequestId: string): Promise<ArtifactGenerationOutcome[]> {
         const status = await this.persistence.markGenerating(artifactRequestId);
         if (status === "COMPLETED") return [];
-        if (status !== "GENERATING") throw new Error(`ArtifactRequest ${artifactRequestId} cannot generate from status ${status}`);
+        if (status !== "GENERATING") throw new ConflictError("ArtifactRequest cannot generate from its current state");
         console.info(JSON.stringify({ event: "artifact_generation.started", artifactRequestId }));
 
         const context = await this.contextService.build(artifactRequestId);
@@ -56,6 +57,8 @@ export class ArtifactGenerationWorkflowService {
                     artifactRequestId,
                     type,
                     errorName: error instanceof Error ? error.name : "UnknownError",
+                    ...(error instanceof ApplicationError ? { errorCode: error.code } : {}),
+                    ...(error instanceof Error && error.cause instanceof Error ? { causeName: error.cause.name } : {}),
                 }));
             }
         }

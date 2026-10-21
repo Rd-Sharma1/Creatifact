@@ -28,4 +28,12 @@ export const artifactRequestCreateSchema = z.object({
     instructions: z.string().nullable().optional(),
 });
 
+export const artifactRequestParamsSchema = z.object({ artifactRequestId: z.uuid() });
+export const artifactCandidateParamsSchema = z.object({ artifactRequestId: z.uuid(), candidateId: z.uuid() });
+export const artifactCandidateIdParamsSchema = z.object({ candidateId: z.uuid() });
+export const editArtifactCandidateBodySchema = z.object({ content: z.string().trim().min(1).max(3000) });
+
 export type ArtifactRequestCreateInput = z.infer<typeof artifactRequestCreateSchema>;
+export type ArtifactRequestParams = z.infer<typeof artifactRequestParamsSchema>;
+export type ArtifactCandidateParams = z.infer<typeof artifactCandidateParamsSchema>;
+export type EditArtifactCandidateBody = z.infer<typeof editArtifactCandidateBodySchema>;
