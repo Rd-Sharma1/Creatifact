@@ -6,7 +6,21 @@ Creatifact turns repository ChangeSets into evidence-grounded post candidates. U
 
 Copy `.env.example` to `.env` and configure the database, GitHub App, OpenRouter, and Inngest values needed by your deployment. Keep `.env` private. Set `APP_ORIGIN` to the same site that serves the API and frontend. Set `AUTH_COOKIE_SECURE=true` for HTTPS deployments; the example disables it only for local HTTP development.
 
-Apply schema changes with `npm run db:migrate` after reviewing the generated SQL migration.
+### Database preflight and tests
+
+The existing unit suite uses fakes and does not connect to PostgreSQL. Any future database-backed tests must use a dedicated database configured as `TEST_DATABASE_URL`, with a database name ending in `_test`; `npm run db:test:check` validates that it is configured and differs from `DATABASE_URL` without connecting.
+
+Before considering a migration for an existing database:
+
+1. Take and verify an appropriate backup, and confirm the target database and recovery procedure with the database owner.
+2. Set `PREFLIGHT_DATABASE_URL` explicitly to the database being assessed. The preflight command never falls back to `DATABASE_URL` and does not print connection details.
+3. Run `npm run db:preflight`. It opens a read-only transaction, maps the database migration records to checked-in migration hashes/tags, compares columns, named constraints/indexes, and enum values with the snapshot for the last applied migration, and lists pending migrations. A missing migration baseline, hash mismatch, or missing/incompatible schema object blocks preflight; extra objects are reported for review.
+4. Review every pending SQL migration and its existing-data impact manually. The preflight checks schema object presence and basic column properties, not every constraint definition or data-dependent condition. It flags some risky SQL patterns, but cannot prove that constraints, data volume, locks, permissions, or production traffic are safe.
+5. Apply migrations only through a separately reviewed and approved release procedure. `npm run db:preflight` never applies migrations or changes data.
+
+Do not assume an existing database is disposable. In particular, a migration adding required columns may be incompatible with existing rows even if the schema comparison passes.
+
+Apply schema changes with `npm run db:migrate` only after preflight, SQL review, backup/recovery planning, and approval for that target.
 
 ## API
 
