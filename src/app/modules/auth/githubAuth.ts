@@ -154,15 +154,15 @@ async function upsertUser(githubUser: z.infer<typeof githubUserSchema>) {
     return result;
 }
 
-export async function createSession(userId: string): Promise<string> {
+export async function createSession(userId: string, database: typeof db = db): Promise<string> {
     const token = randomBytes(32).toString("base64url");
-    await db.insert(authSessionTable).values({ tokenHash: digest(token), userId, expiresAt: new Date(Date.now() + SESSION_TTL_MS) });
+    await database.insert(authSessionTable).values({ tokenHash: digest(token), userId, expiresAt: new Date(Date.now() + SESSION_TTL_MS) });
     return token;
 }
 
-export async function authenticateSession(token: string | undefined): Promise<string | undefined> {
+export async function authenticateSession(token: string | undefined, database: typeof db = db): Promise<string | undefined> {
     if (!token) return undefined;
-    const [session] = await db.select({ userId: authSessionTable.userId }).from(authSessionTable)
+    const [session] = await database.select({ userId: authSessionTable.userId }).from(authSessionTable)
         .where(and(eq(authSessionTable.tokenHash, digest(token)), isNull(authSessionTable.revokedAt), gt(authSessionTable.expiresAt, new Date())));
     return session?.userId;
 }

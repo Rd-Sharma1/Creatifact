@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Client } from "pg";
+import { validateTestDatabaseUrl } from "../src/db/testConfig.js";
 
 type JournalEntry = { idx: number; when: number; tag: string };
 type Journal = { entries: JournalEntry[] };
@@ -35,37 +36,7 @@ type CatalogColumn = {
 
 export type AppliedMigration = { hash: string; created_at: string | number };
 
-export function validateTestDatabaseUrl(testUrl: string | undefined, appUrl: string | undefined): string | undefined {
-    if (!testUrl) return "TEST_DATABASE_URL is required for database-backed tests.";
-
-    let test: URL;
-    try {
-        test = new URL(testUrl);
-    } catch {
-        return "TEST_DATABASE_URL must be a valid PostgreSQL connection URL.";
-    }
-    if (test.protocol !== "postgres:" && test.protocol !== "postgresql:") {
-        return "TEST_DATABASE_URL must use the postgres or postgresql protocol.";
-    }
-    const databaseName = decodeURIComponent(test.pathname.slice(1));
-    if (!databaseName.endsWith("_test")) {
-        return "TEST_DATABASE_URL must target a database whose name ends in _test.";
-    }
-    if (appUrl) {
-        try {
-            const app = new URL(appUrl);
-            const appDatabaseName = decodeURIComponent(app.pathname.slice(1));
-            const testPort = test.port || "5432";
-            const appPort = app.port || "5432";
-            if (test.hostname.toLowerCase() === app.hostname.toLowerCase() && testPort === appPort && databaseName === appDatabaseName) {
-                return "TEST_DATABASE_URL must not target the same database as DATABASE_URL.";
-            }
-        } catch {
-            // DATABASE_URL is only used to detect accidental reuse; never print it.
-        }
-    }
-    return undefined;
-}
+export { validateTestDatabaseUrl };
 
 export function mapMigrationHistory(
     journal: Journal,

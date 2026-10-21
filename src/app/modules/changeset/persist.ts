@@ -3,8 +3,8 @@ import { db } from "../../../db/index.js";
 import { changeSetTable } from "../../../db/schema.js";
 import type { NewChangeSet } from "../../../domain/types.js";
 
-export async function persistChangeSet(changeSet: NewChangeSet): Promise<string | undefined> {
-    const [created] = await db
+export async function persistChangeSet(changeSet: NewChangeSet, database: typeof db = db): Promise<string | undefined> {
+    const [created] = await database
         .insert(changeSetTable)
         .values({
             repositoryId: changeSet.repositoryId,
@@ -23,7 +23,7 @@ export async function persistChangeSet(changeSet: NewChangeSet): Promise<string 
         return created.id;
     }
 
-    const [existing] = await db
+    const [existing] = await database
         .select({
             id: changeSetTable.id,
         })

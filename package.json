@@ -16,6 +16,8 @@
         "db:migrate": "drizzle-kit migrate",
         "db:preflight": "node --import tsx scripts/db-preflight.ts",
         "db:test:check": "node --import tsx scripts/test-db-guard.ts",
+        "db:test:migrate": "npm run db:test:check && node --import tsx scripts/migrate-test-database.ts",
+        "test:integration": "npm run db:test:check && node --import tsx --test src/db/integration/*.integration.test.ts",
         "test-db-push": "node dist/app/modules/changeset/index"
     },
     "dependencies": {

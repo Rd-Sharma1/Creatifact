@@ -149,8 +149,8 @@ export async function discardArtifactCandidate(input: {
 export async function selectArtifactCandidate(input: {
     artifactRequestId: string;
     candidateId: string;
-}): Promise<CandidateActionResult> {
-    return db.transaction(async tx => {
+}, database: typeof db = db): Promise<CandidateActionResult> {
+    return database.transaction(async tx => {
         const request = await lockRequest(tx, input.artifactRequestId);
         if (!request) return { kind: "not-found" };
         if (request.status !== "COMPLETED" && request.status !== "FAILED") return { kind: "conflict", message: "Candidates can only be selected after generation ends" };

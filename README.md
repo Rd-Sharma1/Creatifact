@@ -8,7 +8,24 @@ Copy `.env.example` to `.env` and configure the database, GitHub App, OpenRouter
 
 ### Database preflight and tests
 
-The existing unit suite uses fakes and does not connect to PostgreSQL. Any future database-backed tests must use a dedicated database configured as `TEST_DATABASE_URL`, with a database name ending in `_test`; `npm run db:test:check` validates that it is configured and differs from `DATABASE_URL` without connecting.
+The unit suite uses fakes and does not connect to PostgreSQL. Database integration tests use a dedicated connection configured as `TEST_DATABASE_URL`; they never fall back to `DATABASE_URL`. The test database name must end in `_test`, and it must differ from the application database. `npm run db:test:check` validates these conditions without connecting.
+
+To prepare a repeatable isolated PostgreSQL test database:
+
+1. Using the test PostgreSQL server and a database administrator account, create a dedicated role and database (these commands create new objects and do not delete existing ones):
+
+   ```sh
+   createuser --host <test-postgres-host> --username <provisioner> --pwprompt --no-superuser --no-createdb --no-createrole creatifact_test_user
+   createdb --host <test-postgres-host> --username <provisioner> --owner=creatifact_test_user creatifact_test
+   ```
+
+   Use another database name only if it ends in `_test`. Do not point this procedure at the application or production database.
+2. Configure `TEST_DATABASE_URL` with the test role and test database. Keep `DATABASE_URL` pointed at the normal application target; do not copy it into `TEST_DATABASE_URL`.
+3. Run `npm run db:test:check`; this performs URL/name checks only.
+4. Run `npm run db:test:migrate` to apply pending checked-in Drizzle migrations to the guarded test database. This command does not reset the schema or delete rows.
+5. Run `npm run test:integration`. The tests use synthetic records with unique IDs and remove only rows they created.
+
+The integration suite currently covers session persistence/expiry, repository grant isolation, ChangeSet duplicate persistence, candidate selection idempotency, and outbox persistence. If `TEST_DATABASE_URL` is unset, the guard fails before opening a connection.
 
 Before considering a migration for an existing database:
 

@@ -2,8 +2,9 @@ import type { NextFunction, Request, Response } from "express";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../../db/index.js";
-import { artifactRequestTable, repository, user_repository } from "../../../db/schema.js";
+import { artifactRequestTable, user_repository } from "../../../db/schema.js";
 import { authCookieNames, authenticateSession, readCookie } from "./githubAuth.js";
+import { userHasRepositoryAccess } from "./repositoryAuthorization.js";
 
 export async function requireSession(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -80,10 +81,7 @@ export async function authorizeRepositoryBody(req: Request, res: Response, next:
         return;
     }
     try {
-        const [access] = await db.select({ id: repository.id }).from(repository)
-            .innerJoin(user_repository, eq(user_repository.repositoryId, repository.id))
-            .where(and(eq(repository.id, repositoryId), eq(user_repository.userId, userId)));
-        if (!access) {
+        if (!await userHasRepositoryAccess(userId, repositoryId)) {
             res.status(404).json({ error: "Repository not found" });
             return;
         }

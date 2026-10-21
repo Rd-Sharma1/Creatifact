@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { validateTestDatabaseUrl } from "./db-preflight.js";
+import { validateTestDatabaseUrl } from "../src/db/testConfig.js";
 
 const error = validateTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL);
 if (error) {

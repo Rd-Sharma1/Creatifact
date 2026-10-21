@@ -11,8 +11,10 @@ export interface ArtifactGenerationOutboxStore {
 }
 
 export class ArtifactGenerationOutboxService implements ArtifactGenerationOutboxStore {
+    constructor(private readonly database: typeof db = db) {}
+
     async pending(limit = 50): Promise<PendingGenerationEvent[]> {
-        return db.select({ id: artifactGenerationOutboxTable.id, artifactRequestId: artifactGenerationOutboxTable.artifactRequestId })
+        return this.database.select({ id: artifactGenerationOutboxTable.id, artifactRequestId: artifactGenerationOutboxTable.artifactRequestId })
             .from(artifactGenerationOutboxTable)
             .where(sql`${artifactGenerationOutboxTable.deliveredAt} is null`)
             .orderBy(asc(artifactGenerationOutboxTable.createdAt), asc(artifactGenerationOutboxTable.id))
@@ -21,14 +23,14 @@ export class ArtifactGenerationOutboxService implements ArtifactGenerationOutbox
 
     async recordAttempt(ids: string[]): Promise<void> {
         if (ids.length === 0) return;
-        await db.update(artifactGenerationOutboxTable)
+        await this.database.update(artifactGenerationOutboxTable)
             .set({ attempts: sql`${artifactGenerationOutboxTable.attempts} + 1` })
             .where(and(inArray(artifactGenerationOutboxTable.id, ids), sql`${artifactGenerationOutboxTable.deliveredAt} is null`));
     }
 
     async markDelivered(ids: string[]): Promise<void> {
         if (ids.length === 0) return;
-        await db.update(artifactGenerationOutboxTable)
+        await this.database.update(artifactGenerationOutboxTable)
             .set({ deliveredAt: new Date() })
             .where(and(inArray(artifactGenerationOutboxTable.id, ids), sql`${artifactGenerationOutboxTable.deliveredAt} is null`));
     }

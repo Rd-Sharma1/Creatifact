@@ -5,7 +5,8 @@ import { compareSchemaSnapshot, mapMigrationHistory, validateTestDatabaseUrl } f
 describe("database preflight helpers", () => {
     it("requires a separate test database with an explicit test suffix", () => {
         assert.match(validateTestDatabaseUrl(undefined, undefined) ?? "", /required/);
-        assert.match(validateTestDatabaseUrl("postgresql://user:secret@localhost/app", undefined) ?? "", /ends in _test/);
+        assert.match(validateTestDatabaseUrl("postgresql://user:secret@localhost/app", "postgresql://user:secret@localhost/app") ?? "", /ends in _test/);
+        assert.match(validateTestDatabaseUrl("postgresql://user:secret@localhost/app_test", undefined) ?? "", /DATABASE_URL is required/);
         assert.match(validateTestDatabaseUrl("postgresql://user:secret@localhost/app_test", "postgresql://user:secret@localhost/app_test") ?? "", /same database/);
         assert.equal(validateTestDatabaseUrl("postgresql://user:secret@localhost/app_test", "postgresql://user:secret@localhost/app"), undefined);
     });
