@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ArtifactCandidateEvidence, ArtifactEvidenceItem, ArtifactType, GenerationCandidateInput } from "../../../domain/types.js";
 import { OpenRouterClient, openRouterClient } from "../llm/OpenRouterClient.js";
+import { sanitizeEvidenceForModel, sanitizeModelText } from "../llm/ModelInputSanitizer.js";
 
 const evaluationSchema = z.object({
     factuallySupported: z.boolean(),
@@ -33,11 +34,20 @@ export class CandidateValidator {
         if (!input.candidate.content.trim() || input.candidate.claims.length === 0) {
             throw new CandidateValidationError("Candidate content and at least one evidenced claim are required");
         }
-        if (containsSensitiveValue(input.candidate.content)) {
-            throw new CandidateValidationError("Candidate contains a value that looks like a secret or personal email address");
+        const candidateText = [input.candidate.angle, input.candidate.content, ...input.candidate.claims.map(claim => claim.claim)];
+        if (candidateText.some(value => {
+            const sanitized = sanitizeModelText(value);
+            return sanitized.redactionCount > 0 || sanitized.unsafe;
+        })) {
+            throw new CandidateValidationError("Candidate contains a value that looks like a secret or personal data");
         }
 
-        const allowedEvidence = new Map(input.evidence.map(item => [item.changeSetId, item.text]));
+        const evidence = sanitizeEvidenceForModel(input.evidence);
+        const sanitizedInstructions = input.instructions === null ? null : sanitizeModelText(input.instructions);
+        const instructions = sanitizedInstructions?.unsafe
+            ? "[Instructions omitted because sensitive key material could not be safely delimited]"
+            : sanitizedInstructions?.text ?? null;
+        const allowedEvidence = new Map(evidence.map(item => [item.changeSetId, item.text]));
         const references: ArtifactCandidateEvidence[] = [];
         for (const claim of input.candidate.claims) {
             if (!claim.claim.trim() || claim.evidence.length === 0) {
@@ -63,31 +73,20 @@ export class CandidateValidator {
                 "Return only JSON matching the schema.",
             ].join(" "),
             user: JSON.stringify({
-                instructions: input.instructions,
+                instructions,
                 content: input.candidate.content,
                 claims: input.candidate.claims,
-                evidence: input.evidence.map(item => ({ changeSetId: item.changeSetId, text: item.text })),
+                evidence: evidence.map(item => ({ changeSetId: item.changeSetId, text: item.text })),
             }),
             maxOutputTokens: 500,
             schema: evaluationSchema,
         });
 
         if (!evaluation.factuallySupported || !evaluation.followsInstructions || !evaluation.safe || !evaluation.sufficientEvidence) {
-            throw new CandidateValidationError(`Candidate rejected by evidence and safety review: ${evaluation.reasons.join("; ")}`);
+            throw new CandidateValidationError("Candidate rejected by evidence and safety review");
         }
         return references;
     }
 }
 
 export const candidateValidator = new CandidateValidator();
-
-function containsSensitiveValue(content: string): boolean {
-    return [
-        /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i,
-        /\bAKIA[0-9A-Z]{16}\b/,
-        /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
-        /\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
-        /\b(?:api[_-]?key|access[_-]?token|secret)\s*[:=]\s*[A-Za-z0-9_./+-]{12,}/i,
-        /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
-    ].some(pattern => pattern.test(content));
-}

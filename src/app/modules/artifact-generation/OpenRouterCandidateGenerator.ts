@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ArtifactGenerationContext, ArtifactType, GeneratedArtifactCandidates, GenerationCandidateInput } from "../../../domain/types.js";
 import { OpenRouterClient, openRouterClient } from "../llm/OpenRouterClient.js";
+import { sanitizeEvidenceForModel, sanitizeModelText } from "../llm/ModelInputSanitizer.js";
 import { CandidateValidationError, CandidateValidator, candidateValidator } from "./CandidateValidator.js";
 
 const candidateSchema = z.object({
@@ -26,6 +27,13 @@ export class OpenRouterCandidateGenerator {
 
     async generate(context: ArtifactGenerationContext): Promise<GeneratedArtifactCandidates> {
         const platform = this.artifactType === "X_POST" ? "X" : "LinkedIn";
+        const sanitizedInstructions = context.artifactRequest.instructions === null
+            ? null
+            : sanitizeModelText(context.artifactRequest.instructions);
+        const instructions = sanitizedInstructions?.unsafe
+            ? "[Instructions omitted because sensitive key material could not be safely delimited]"
+            : sanitizedInstructions?.text ?? null;
+        const evidence = sanitizeEvidenceForModel(context.evidence);
         const generated = await this.client.completeJson({
             task: "generation",
             system: [
@@ -38,8 +46,7 @@ export class OpenRouterCandidateGenerator {
                 "Return JSON with candidates containing angle, content, and claims; each claim must contain evidence references.",
             ].join(" "),
             user: JSON.stringify({
-                repository: context.repository,
-                instructions: context.artifactRequest.instructions,
+                instructions,
                 scope: context.artifactRequest.scope,
                 targetChangeSets: context.changeSets.filter(item => item.role === "TARGET").map(item => ({
                     id: item.changeSet.id,
@@ -49,7 +56,7 @@ export class OpenRouterCandidateGenerator {
                     id: item.changeSet.id,
                     createdAt: item.changeSet.createdAt.toISOString(),
                 })),
-                evidence: context.evidence,
+                evidence,
             }),
             maxOutputTokens: this.artifactType === "X_POST" ? 1600 : 2400,
             schema: candidatesSchema,
@@ -60,9 +67,9 @@ export class OpenRouterCandidateGenerator {
             try {
                 await this.validator.validate({
                     type: this.artifactType,
-                    instructions: context.artifactRequest.instructions,
+                    instructions,
                     candidate,
-                    evidence: context.evidence,
+                    evidence,
                 });
                 accepted.push(candidate);
             } catch (error) {

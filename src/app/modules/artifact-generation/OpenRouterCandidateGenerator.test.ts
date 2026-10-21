@@ -17,9 +17,10 @@ function candidate(angle: string, content: string): GenerationCandidateInput {
     return { angle, content, claims: [{ claim: content, evidence: [{ changeSetId: "8c93393c-328e-4d56-b694-04d1a17d8aaa", quote: "Added token validation to login." }] }] };
 }
 
-function modelClient(candidates: GenerationCandidateInput[]): Pick<OpenRouterClient, "completeJson"> {
+function modelClient(candidates: GenerationCandidateInput[], onCall?: (input: { user: string }) => void): Pick<OpenRouterClient, "completeJson"> {
     return {
-        async completeJson<T>(input: { schema: import("zod").ZodType<T> }): Promise<T> {
+        async completeJson<T>(input: { schema: import("zod").ZodType<T>; user?: string }): Promise<T> {
+            if (input.user !== undefined) onCall?.({ user: input.user });
             return input.schema.parse({ candidates });
         },
     };
@@ -46,5 +47,31 @@ describe("OpenRouterCandidateGenerator", () => {
         ]), validator);
         const result = await generator.generate(context);
         assert.equal(result.candidates.length, 1);
+    });
+
+    it("sanitizes instructions and evidence before candidate generation and retains useful code", async () => {
+        let sent = "";
+        const privateContext: ArtifactGenerationContext = {
+            ...context,
+            artifactRequest: {
+                ...context.artifactRequest,
+                instructions: "Focus on dev@example.com and token ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+            },
+            evidence: [{
+                ...context.evidence[0]!,
+                text: "Commit: Add validation\nFile: src/auth.ts\nconst token = validateToken(input);\nconst apiKey = 'synthetic-secret-value';",
+            }],
+        };
+        const generator = new OpenRouterCandidateGenerator("X_POST", modelClient([
+            candidate("Token checks", "Added token validation to login."),
+        ], input => { sent = input.user; }), { validate: async () => [] });
+
+        await generator.generate(privateContext);
+        assert.ok(!sent.includes("dev@example.com"));
+        assert.ok(!sent.includes("ghp_abcdefghijklmnopqrstuvwxyz1234567890"));
+        assert.ok(!sent.includes("synthetic-secret-value"));
+        assert.ok(!sent.includes("repo-id"));
+        assert.ok(sent.includes("validateToken(input)"));
+        assert.ok(sent.includes("[REDACTED]"));
     });
 });

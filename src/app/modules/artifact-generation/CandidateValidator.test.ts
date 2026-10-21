@@ -18,9 +18,10 @@ const candidate: GenerationCandidateInput = {
     }],
 };
 
-function fakeClient(result: unknown): Pick<OpenRouterClient, "completeJson"> {
+function fakeClient(result: unknown, onCall?: (input: { user: string }) => void): Pick<OpenRouterClient, "completeJson"> {
     return {
-        async completeJson<T>(input: { schema: import("zod").ZodType<T> }): Promise<T> {
+        async completeJson<T>(input: { schema: import("zod").ZodType<T>; user?: string }): Promise<T> {
+            if (input.user !== undefined) onCall?.({ user: input.user });
             return input.schema.parse(result);
         },
     };
@@ -74,5 +75,37 @@ describe("CandidateValidator", () => {
             validator.validate({ type: "X_POST", instructions: null, candidate: { ...candidate, content: "Contact dev@example.com" }, evidence }),
             CandidateValidationError,
         );
+    });
+
+    it("sanitizes instructions and source evidence before sending candidate evaluation", async () => {
+        let sent = "";
+        const sourceEvidence: ArtifactEvidenceItem[] = [{
+            changeSetId: evidence[0]!.changeSetId,
+            role: "TARGET",
+            text: "Changed src/auth.ts to validate tokens. API_KEY=synthetic-api-key-value-12345 Contact dev@example.com",
+        }];
+        const safeCandidate: GenerationCandidateInput = {
+            angle: "Token validation",
+            content: "Added token validation to login.",
+            claims: [{
+                claim: "The API key configuration was updated.",
+                evidence: [{ changeSetId: sourceEvidence[0]!.changeSetId, quote: "API_KEY=[REDACTED] Contact [REDACTED]" }],
+            }],
+        };
+        const validator = new CandidateValidator(fakeClient({
+            factuallySupported: true, followsInstructions: true, safe: true, sufficientEvidence: true, reasons: [],
+        }, input => { sent = input.user; }));
+
+        const references = await validator.validate({
+            type: "X_POST",
+            instructions: "Focus on dev@example.com and API_KEY=synthetic-api-key-value-12345",
+            candidate: safeCandidate,
+            evidence: sourceEvidence,
+        });
+
+        assert.ok(!sent.includes("dev@example.com"));
+        assert.ok(!sent.includes("synthetic-api-key-value-12345"));
+        assert.ok(sent.includes("Changed src/auth.ts to validate tokens."));
+        assert.deepEqual(references[0]?.quote, "API_KEY=[REDACTED] Contact [REDACTED]");
     });
 });

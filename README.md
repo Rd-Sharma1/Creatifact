@@ -2,6 +2,8 @@
 
 Creatifact turns repository ChangeSets into evidence-grounded post candidates. Users review, edit, select, or discard candidates; selecting one creates a final Artifact.
 
+Before repository activity or instructions are sent to OpenRouter, Creatifact applies best-effort pattern-based redaction to recognizable credentials, private-key blocks, and email addresses. Model evidence omits GitHub repository identity, excludes diff headers, and limits each patch excerpt. These checks reduce accidental disclosure but cannot identify every secret or personal detail; repository content should still be treated as potentially sensitive when enabling an external model provider. Synthetic fixtures cover the known patterns, not every possible credential format.
+
 ## Local configuration
 
 Copy `.env.example` to `.env` and configure the database, GitHub App, OpenRouter, and Inngest values needed by your deployment. Keep `.env` private. Set `APP_ORIGIN` to the same site that serves the API and frontend. Set `AUTH_COOKIE_SECURE=true` for HTTPS deployments; the example disables it only for local HTTP development.
