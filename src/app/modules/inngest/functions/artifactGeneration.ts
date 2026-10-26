@@ -16,10 +16,10 @@ export const artifactGeneration = inngest.createFunction(
             });
         },
     },
-    async ({ event, step }) => {
-        const { artifactRequestId } = parseOrThrow(artifactGenerationRequestedEventSchema, event.data);
+    async ({ event, step, runId, attempt }) => {
+        const { artifactRequestId, correlationId } = parseOrThrow(artifactGenerationRequestedEventSchema, event.data);
         return step.run("generate-and-persist-artifacts", async () =>
-            artifactGenerationWorkflowService.run(artifactRequestId),
+            artifactGenerationWorkflowService.run(artifactRequestId, correlationId, runId, attempt),
         );
     },
 );

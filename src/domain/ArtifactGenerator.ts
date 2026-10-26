@@ -1,6 +1,6 @@
-import type { ArtifactGenerationContext, ArtifactType, GeneratedArtifactCandidates } from "./types.js";
+import type { ArtifactGenerationContext, ArtifactGenerationTrace, ArtifactType, GeneratedArtifactCandidates } from "./types.js";
 
 export interface ArtifactGenerator {
     readonly artifactType: ArtifactType;
-    generate(context: ArtifactGenerationContext): Promise<GeneratedArtifactCandidates>;
+    generate(context: ArtifactGenerationContext, trace?: ArtifactGenerationTrace): Promise<GeneratedArtifactCandidates>;
 }

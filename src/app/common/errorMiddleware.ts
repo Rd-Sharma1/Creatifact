@@ -2,6 +2,7 @@ import type { ErrorRequestHandler } from "express";
 import { z } from "zod";
 import { ApplicationError } from "./errors.js";
 import { safeZodDetails } from "./validation.js";
+import { writeLog } from "./logger.js";
 
 export type ApiErrorEnvelope = {
     error: {
@@ -35,17 +36,14 @@ export function apiErrorEnvelope(error: unknown, requestId: string | undefined):
 export const errorMiddleware: ErrorRequestHandler = (error, req, res, _next) => {
     const mapped = apiErrorEnvelope(error, res.locals.requestId);
     const log = {
-        event: "http.request.failed",
         requestId: res.locals.requestId,
         method: req.method,
-        path: req.path,
         statusCode: mapped.status,
         errorCode: mapped.body.error.code,
         errorName: error instanceof Error ? error.name : "UnknownError",
         ...(error instanceof Error && error.cause instanceof Error ? { causeName: error.cause.name } : {}),
     };
-    if (mapped.status >= 500) console.error(JSON.stringify(log));
-    else console.warn(JSON.stringify(log));
+    writeLog(mapped.status >= 500 ? "error" : "warn", "http.request.failed", log);
 
     if (res.headersSent) return;
     res.status(mapped.status).json(mapped.body);

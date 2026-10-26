@@ -32,6 +32,7 @@ export async function createArtifactRequest(
         activityMap?: ActivityMapReader;
         intentResolver?: ArtifactIntentInterpreter;
         historyRetriever?: WorkHistoryRetrieverContract;
+        correlationId?: string;
     } = {},
 ): Promise<CreateArtifactRequestResult> {
     const [existingRepository] = await db
@@ -46,6 +47,7 @@ export async function createArtifactRequest(
         instructions: input.instructions ?? "",
         explicitScope: input.scope,
         activity,
+        ...(dependencies.correlationId ? { correlationId: dependencies.correlationId } : {}),
     });
     if (intent.clarification) {
         return { kind: "clarification-required", clarification: intent.clarification };
@@ -83,7 +85,10 @@ export async function createArtifactRequest(
             role: role satisfies ChangeSetRole,
         })));
 
-        await tx.insert(artifactGenerationOutboxTable).values({ artifactRequestId: request.id });
+        await tx.insert(artifactGenerationOutboxTable).values({
+            artifactRequestId: request.id,
+            correlationId: dependencies.correlationId,
+        });
         return request;
     });
 

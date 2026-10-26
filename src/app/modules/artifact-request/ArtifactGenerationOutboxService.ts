@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../../../db/index.js";
 import { artifactGenerationOutboxTable } from "../../../db/schema.js";
 
-export type PendingGenerationEvent = { id: string; artifactRequestId: string };
+export type PendingGenerationEvent = { id: string; artifactRequestId: string; correlationId: string | null };
 
 export interface ArtifactGenerationOutboxStore {
     pending(limit?: number): Promise<PendingGenerationEvent[]>;
@@ -14,7 +14,11 @@ export class ArtifactGenerationOutboxService implements ArtifactGenerationOutbox
     constructor(private readonly database: typeof db = db) {}
 
     async pending(limit = 50): Promise<PendingGenerationEvent[]> {
-        return this.database.select({ id: artifactGenerationOutboxTable.id, artifactRequestId: artifactGenerationOutboxTable.artifactRequestId })
+        return this.database.select({
+            id: artifactGenerationOutboxTable.id,
+            artifactRequestId: artifactGenerationOutboxTable.artifactRequestId,
+            correlationId: artifactGenerationOutboxTable.correlationId,
+        })
             .from(artifactGenerationOutboxTable)
             .where(sql`${artifactGenerationOutboxTable.deliveredAt} is null`)
             .orderBy(asc(artifactGenerationOutboxTable.createdAt), asc(artifactGenerationOutboxTable.id))

@@ -1,6 +1,8 @@
 import {
     bigint,
     check,
+    doublePrecision,
+    index,
     jsonb,
     integer,
     pgEnum,
@@ -185,10 +187,36 @@ export const artifactGenerationOutboxTable = pgTable(
             .notNull()
             .unique()
             .references(() => artifactRequestTable.id),
+        correlationId: uuid("correlation_id"),
         createdAt: timestamp("created_at").defaultNow().notNull(),
         deliveredAt: timestamp("delivered_at"),
         attempts: integer("attempts").notNull().default(0),
     },
+);
+
+export const aiRunTable = pgTable(
+    "ai_runs",
+    {
+        id: uuid("id").primaryKey().defaultRandom(),
+        correlationId: uuid("correlation_id"),
+        artifactRequestId: uuid("artifact_request_id").references(() => artifactRequestTable.id),
+        workflowRunId: varchar("workflow_run_id", { length: 200 }),
+        operation: varchar("operation", { length: 32 }).notNull(),
+        model: varchar("model", { length: 200 }),
+        promptVersion: varchar("prompt_version", { length: 100 }).notNull(),
+        startedAt: timestamp("started_at").notNull(),
+        durationMs: integer("duration_ms").notNull(),
+        outcome: varchar("outcome", { length: 16 }).notNull(),
+        failureCategory: varchar("failure_category", { length: 32 }),
+        retryAttempt: integer("retry_attempt"),
+        validationFailureCodes: jsonb("validation_failure_codes").$type<string[]>().notNull().default([]),
+        inputTokens: integer("input_tokens"),
+        outputTokens: integer("output_tokens"),
+        totalTokens: integer("total_tokens"),
+        cost: doublePrecision("cost"),
+        createdAt: timestamp("created_at").defaultNow().notNull(),
+    },
+    table => [index("ai_runs_artifact_request_created_at_idx").on(table.artifactRequestId, table.createdAt)],
 );
 
 export const artifactTable = pgTable(

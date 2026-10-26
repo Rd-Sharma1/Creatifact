@@ -4,6 +4,7 @@ import { resolveRepository } from "../../repository/resolve.js";
 import { inngest } from "../client.js";
 import { parseOrThrow } from "../../../common/validation.js";
 import { changeSetCreatedEventSchema, githubPushReceivedEventSchema } from "../eventSchemas.js";
+import { writeLog } from "../../../common/logger.js";
 
 export const changeSetRetriever = inngest.createFunction(
     {
@@ -15,7 +16,7 @@ export const changeSetRetriever = inngest.createFunction(
             },
         ],
     },
-    async ({ event, step }) => {
+    async ({ event, step, runId }) => {
         const { installationId, githubRepoId, owner, repositoryName, before, after } = parseOrThrow(githubPushReceivedEventSchema, event.data);
 
         const basehead = `${before}...${after}`;
@@ -29,9 +30,7 @@ export const changeSetRetriever = inngest.createFunction(
         });
 
         const changeSet = await step.run("github-changes-retrieval-call", async () => {
-            //Step 1 Retrieving commmit info from github
-
-            console.log("Starting changeSet Retrieval step");
+            writeLog("info", "github.changeset_retrieval.started", { workflowRunId: runId, repositoryId, githubRepoId });
 
             const changeSet = await GithubServices.retrieveChangeset({
                 repositoryName,
@@ -46,8 +45,7 @@ export const changeSetRetriever = inngest.createFunction(
         });
 
         const savedChangeSet = await step.run("persist-change-set", async () => {
-            // Step 2 Persisting the changeSet
-            console.log("Starting changeSet persistance step");
+            writeLog("info", "github.changeset_persistence.started", { workflowRunId: runId, repositoryId });
 
             return ChangeSetService.persist({ ...changeSet, repositoryId });
         });
@@ -60,6 +58,10 @@ export const changeSetRetriever = inngest.createFunction(
             name: "github/changeset.created",
             data: createdEvent,
         });
-        console.log("\n+============+\n Retrieval Workflow success!");
+        writeLog("info", "github.changeset_persistence.completed", {
+            workflowRunId: runId,
+            repositoryId,
+            changeSetId: savedChangeSet,
+        });
     },
 );

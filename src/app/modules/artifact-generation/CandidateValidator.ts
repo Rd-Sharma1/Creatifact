@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ArtifactCandidateEvidence, ArtifactEvidenceItem, ArtifactType, GenerationCandidateInput } from "../../../domain/types.js";
+import type { ArtifactCandidateEvidence, ArtifactEvidenceItem, ArtifactGenerationTrace, ArtifactType, GenerationCandidateInput } from "../../../domain/types.js";
 import { DomainValidationError } from "../../common/errors.js";
 import { OpenRouterClient, openRouterClient } from "../llm/OpenRouterClient.js";
 import { sanitizeEvidenceForModel, sanitizeModelText } from "../llm/ModelInputSanitizer.js";
@@ -13,7 +13,7 @@ const evaluationSchema = z.object({
 });
 
 export class CandidateValidationError extends DomainValidationError {
-    constructor(message: string) {
+    constructor(readonly validationCode: string, message: string) {
         super("CANDIDATE_REJECTED", message);
     }
 }
@@ -26,20 +26,21 @@ export class CandidateValidator {
         instructions: string | null;
         candidate: GenerationCandidateInput;
         evidence: ArtifactEvidenceItem[];
+        trace?: ArtifactGenerationTrace;
     }): Promise<ArtifactCandidateEvidence[]> {
         const limit = input.type === "X_POST" ? 280 : 3000;
         if (Array.from(input.candidate.content).length > limit) {
-            throw new CandidateValidationError(`${input.type} candidate exceeds ${limit} characters`);
+            throw new CandidateValidationError("PLATFORM_LENGTH", `${input.type} candidate exceeds ${limit} characters`);
         }
         if (!input.candidate.content.trim() || input.candidate.claims.length === 0) {
-            throw new CandidateValidationError("Candidate content and at least one evidenced claim are required");
+            throw new CandidateValidationError("MISSING_CONTENT_OR_CLAIMS", "Candidate content and at least one evidenced claim are required");
         }
         const candidateText = [input.candidate.angle, input.candidate.content, ...input.candidate.claims.map(claim => claim.claim)];
         if (candidateText.some(value => {
             const sanitized = sanitizeModelText(value);
             return sanitized.redactionCount > 0 || sanitized.unsafe;
         })) {
-            throw new CandidateValidationError("Candidate contains a value that looks like a secret or personal data");
+            throw new CandidateValidationError("SENSITIVE_OUTPUT", "Candidate contains a value that looks like a secret or personal data");
         }
 
         const evidence = sanitizeEvidenceForModel(input.evidence);
@@ -51,12 +52,12 @@ export class CandidateValidator {
         const references: ArtifactCandidateEvidence[] = [];
         for (const claim of input.candidate.claims) {
             if (!claim.claim.trim() || claim.evidence.length === 0) {
-                throw new CandidateValidationError("Every factual claim must reference evidence");
+                throw new CandidateValidationError("MISSING_EVIDENCE_REFERENCE", "Every factual claim must reference evidence");
             }
             for (const reference of claim.evidence) {
                 const source = allowedEvidence.get(reference.changeSetId);
                 if (!source || reference.quote.length < 12 || !source.includes(reference.quote)) {
-                    throw new CandidateValidationError("Candidate evidence reference is not present in the supplied ChangeSet evidence");
+                    throw new CandidateValidationError("INVALID_EVIDENCE_REFERENCE", "Candidate evidence reference is not present in the supplied ChangeSet evidence");
                 }
                 references.push({ claim: claim.claim, ...reference });
             }
@@ -80,10 +81,21 @@ export class CandidateValidator {
             }),
             maxOutputTokens: 500,
             schema: evaluationSchema,
+            telemetry: {
+                ...(input.trace ?? {}),
+                operation: "evaluation",
+                promptVersion: "candidate-evaluation.v1",
+                validationFailureCodes: result => [
+                    ...(!result.factuallySupported ? ["FACTUAL_SUPPORT"] : []),
+                    ...(!result.followsInstructions ? ["INSTRUCTION_ADHERENCE"] : []),
+                    ...(!result.safe ? ["SAFETY"] : []),
+                    ...(!result.sufficientEvidence ? ["INSUFFICIENT_EVIDENCE"] : []),
+                ],
+            },
         });
 
         if (!evaluation.factuallySupported || !evaluation.followsInstructions || !evaluation.safe || !evaluation.sufficientEvidence) {
-            throw new CandidateValidationError("Candidate rejected by evidence and safety review");
+            throw new CandidateValidationError("EVALUATOR_REJECTION", "Candidate rejected by evidence and safety review");
         }
         return references;
     }

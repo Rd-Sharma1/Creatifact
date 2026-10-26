@@ -1,8 +1,9 @@
 import { z } from "zod";
-import type { ArtifactGenerationContext, ArtifactType, GeneratedArtifactCandidates, GenerationCandidateInput } from "../../../domain/types.js";
+import type { ArtifactGenerationContext, ArtifactGenerationTrace, ArtifactType, GeneratedArtifactCandidates, GenerationCandidateInput } from "../../../domain/types.js";
 import { OpenRouterClient, openRouterClient } from "../llm/OpenRouterClient.js";
 import { sanitizeEvidenceForModel, sanitizeModelText } from "../llm/ModelInputSanitizer.js";
 import { CandidateValidationError, CandidateValidator, candidateValidator } from "./CandidateValidator.js";
+import { aiRunTelemetry } from "../llm/AiRunTelemetry.js";
 
 const candidateSchema = z.object({
     angle: z.string().trim().min(1).max(120),
@@ -25,7 +26,7 @@ export class OpenRouterCandidateGenerator {
         private readonly validator: Pick<CandidateValidator, "validate"> = candidateValidator,
     ) {}
 
-    async generate(context: ArtifactGenerationContext): Promise<GeneratedArtifactCandidates> {
+    async generate(context: ArtifactGenerationContext, trace?: ArtifactGenerationTrace): Promise<GeneratedArtifactCandidates> {
         const platform = this.artifactType === "X_POST" ? "X" : "LinkedIn";
         const sanitizedInstructions = context.artifactRequest.instructions === null
             ? null
@@ -60,6 +61,11 @@ export class OpenRouterCandidateGenerator {
             }),
             maxOutputTokens: this.artifactType === "X_POST" ? 1600 : 2400,
             schema: candidatesSchema,
+            telemetry: {
+                ...(trace ?? { artifactRequestId: context.artifactRequest.id }),
+                operation: "generation",
+                promptVersion: "candidate-generation.v1",
+            },
         });
 
         const accepted: GenerationCandidateInput[] = [];
@@ -70,10 +76,25 @@ export class OpenRouterCandidateGenerator {
                     instructions,
                     candidate,
                     evidence,
+                    trace: trace ?? { artifactRequestId: context.artifactRequest.id },
                 });
                 accepted.push(candidate);
             } catch (error) {
                 if (!(error instanceof CandidateValidationError)) throw error;
+                await aiRunTelemetry.record({
+                    ...(trace?.correlationId ? { correlationId: trace.correlationId } : {}),
+                    artifactRequestId: context.artifactRequest.id,
+                    ...(trace?.workflowRunId ? { workflowRunId: trace.workflowRunId } : {}),
+                    operation: "candidate_validation",
+                    model: null,
+                    promptVersion: "candidate-validation.v1",
+                    startedAt: new Date(),
+                    durationMs: 0,
+                    outcome: "REJECTED",
+                    failureCategory: "VALIDATION",
+                    ...(trace?.retryAttempt !== undefined ? { retryAttempt: trace.retryAttempt } : {}),
+                    validationFailureCodes: [error.validationCode],
+                });
             }
         }
 
@@ -81,7 +102,7 @@ export class OpenRouterCandidateGenerator {
             accepted.findIndex(other => other.angle.toLowerCase() === candidate.angle.toLowerCase() || other.content === candidate.content) === index,
         );
         if (distinct.length === 0) {
-            throw new CandidateValidationError(`No valid ${this.artifactType} candidate passed validation`);
+            throw new CandidateValidationError("NO_VALID_CANDIDATE", `No valid ${this.artifactType} candidate passed validation`);
         }
         return { type: this.artifactType, candidates: distinct.slice(0, 2) };
     }

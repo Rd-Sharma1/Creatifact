@@ -133,6 +133,14 @@ export type ArtifactGenerationContext = {
     evidence: ArtifactEvidenceItem[];
 };
 
+/** Operational trace identifiers passed through generation without exposing transport or persistence APIs. */
+export type ArtifactGenerationTrace = {
+    correlationId?: string;
+    artifactRequestId: string;
+    workflowRunId?: string;
+    retryAttempt?: number;
+};
+
 export type ActivityMapFile = {
     filename: string;
     status: string;

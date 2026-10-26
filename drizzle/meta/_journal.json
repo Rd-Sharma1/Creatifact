@@ -57,6 +57,13 @@
       "when": 1792521520565,
       "tag": "0007_perpetual_slapstick",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792579491574,
+      "tag": "0008_flat_wrecker",
+      "breakpoints": true
     }
   ]
 }

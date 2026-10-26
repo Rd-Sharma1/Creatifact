@@ -24,6 +24,7 @@ export interface ArtifactIntentInterpreter {
         instructions: string;
         explicitScope: ArtifactRequestScope | undefined;
         activity: ActivityMapEntry[];
+        correlationId?: string;
     }): Promise<ResolvedArtifactIntent>;
 }
 
@@ -34,6 +35,7 @@ export class ArtifactIntentResolver implements ArtifactIntentInterpreter {
         instructions: string;
         explicitScope: ArtifactRequestScope | undefined;
         activity: ActivityMapEntry[];
+        correlationId?: string;
     }): Promise<ResolvedArtifactIntent> {
         const instructions = input.instructions.trim();
         if (!instructions && !input.explicitScope) {
@@ -70,6 +72,11 @@ export class ArtifactIntentResolver implements ArtifactIntentInterpreter {
             })) }),
             maxOutputTokens: 700,
             schema: intentOutputSchema,
+            telemetry: {
+                ...(input.correlationId ? { correlationId: input.correlationId } : {}),
+                operation: "scope_interpretation",
+                promptVersion: "intent-resolution.v1",
+            },
         });
 
         return {

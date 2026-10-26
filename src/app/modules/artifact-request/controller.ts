@@ -42,7 +42,7 @@ function sendCandidateActionResult(res: Response, result: Awaited<ReturnType<typ
 export async function createArtifactRequestController(req: Request, res: Response): Promise<void> {
     const input = (res.locals.artifactRequestInput as ArtifactRequestCreateInput | undefined)
         ?? parseOrThrow(artifactRequestCreateSchema, req.body);
-    const result = await createArtifactRequest(input);
+    const result = await createArtifactRequest(input, { correlationId: res.locals.requestId });
     if (result.kind === "repository-not-found") throw new NotFoundError("Repository not found");
     if (result.kind === "empty-scope") {
         throw new DomainValidationError("EMPTY_SCOPE", "No ChangeSets match the requested scope");

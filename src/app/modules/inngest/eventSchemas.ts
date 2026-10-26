@@ -13,7 +13,7 @@ export const githubPushReceivedEventSchema = z.object({
     compareUrl: z.string().max(2048),
 });
 
-export const artifactGenerationRequestedEventSchema = z.object({ artifactRequestId: z.uuid() });
+export const artifactGenerationRequestedEventSchema = z.object({ artifactRequestId: z.uuid(), correlationId: z.uuid().optional() });
 export const changeSetCreatedEventSchema = z.object({ changeSetId: z.uuid() });
 
 export type GithubPushReceivedEvent = z.infer<typeof githubPushReceivedEventSchema>;

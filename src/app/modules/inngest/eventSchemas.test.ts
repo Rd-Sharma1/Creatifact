@@ -19,6 +19,9 @@ describe("external event schemas", () => {
 
     it("rejects malformed workflow references", () => {
         assert.equal(artifactGenerationRequestedEventSchema.safeParse({ artifactRequestId: "not-a-uuid" }).success, false);
+        assert.equal(artifactGenerationRequestedEventSchema.safeParse({
+            artifactRequestId: "b4687374-d4d8-4df1-b795-71d7cf34a550", correlationId: "untrusted-id",
+        }).success, false);
         assert.equal(githubPushReceivedEventSchema.safeParse({ installationId: 0 }).success, false);
     });
 });
