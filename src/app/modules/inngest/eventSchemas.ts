@@ -14,8 +14,14 @@ export const githubPushReceivedEventSchema = z.object({
 });
 
 export const artifactGenerationRequestedEventSchema = z.object({ artifactRequestId: z.uuid(), correlationId: z.uuid().optional() });
+export const artifactGenerationCancelledEventSchema = z.object({
+    function_id: z.literal("creatifact-artifact-app-generate-artifacts-for-request"),
+    run_id: z.string().min(1),
+    event: z.object({ data: artifactGenerationRequestedEventSchema }),
+});
 export const changeSetCreatedEventSchema = z.object({ changeSetId: z.uuid() });
 
 export type GithubPushReceivedEvent = z.infer<typeof githubPushReceivedEventSchema>;
 export type ArtifactGenerationRequestedEvent = z.infer<typeof artifactGenerationRequestedEventSchema>;
+export type ArtifactGenerationCancelledEvent = z.infer<typeof artifactGenerationCancelledEventSchema>;
 export type ChangeSetCreatedEvent = z.infer<typeof changeSetCreatedEventSchema>;

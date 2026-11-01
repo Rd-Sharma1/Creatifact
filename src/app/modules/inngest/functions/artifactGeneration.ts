@@ -1,7 +1,7 @@
 import { artifactGenerationWorkflowService } from "../../artifact-generation/ArtifactGenerationWorkflowService.js";
 import { inngest } from "../client.js";
 import { parseOrThrow } from "../../../common/validation.js";
-import { artifactGenerationRequestedEventSchema } from "../eventSchemas.js";
+import { artifactGenerationCancelledEventSchema, artifactGenerationRequestedEventSchema } from "../eventSchemas.js";
 
 export const artifactGeneration = inngest.createFunction(
     {
@@ -21,5 +21,24 @@ export const artifactGeneration = inngest.createFunction(
         return step.run("generate-and-persist-artifacts", async () =>
             artifactGenerationWorkflowService.run(artifactRequestId, correlationId, runId, attempt),
         );
+    },
+);
+
+export const artifactGenerationCancelled = inngest.createFunction(
+    {
+        id: "mark-artifact-request-cancelled",
+        name: "Mark cancelled ArtifactRequest generation",
+        triggers: [{
+            event: "inngest/function.cancelled",
+            if: "event.data.function_id == 'creatifact-artifact-app-generate-artifacts-for-request'",
+        }],
+    },
+    async ({ event, step }) => {
+        const cancelled = parseOrThrow(artifactGenerationCancelledEventSchema, event.data);
+        const { artifactRequestId } = cancelled.event.data;
+        await step.run("mark-cancelled-artifact-request-failed", async () => {
+            await artifactGenerationWorkflowService.markCancelled(artifactRequestId);
+        });
+        return { artifactRequestId, handled: true };
     },
 );

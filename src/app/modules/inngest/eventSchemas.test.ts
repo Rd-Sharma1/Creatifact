@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { githubPushWebhookSchema } from "../github/eventSchemas.js";
-import { artifactGenerationRequestedEventSchema, githubPushReceivedEventSchema } from "./eventSchemas.js";
+import { artifactGenerationCancelledEventSchema, artifactGenerationRequestedEventSchema, githubPushReceivedEventSchema } from "./eventSchemas.js";
 
 describe("external event schemas", () => {
     it("accepts a structurally valid push webhook and its normalized event", () => {
@@ -23,5 +23,15 @@ describe("external event schemas", () => {
             artifactRequestId: "b4687374-d4d8-4df1-b795-71d7cf34a550", correlationId: "untrusted-id",
         }).success, false);
         assert.equal(githubPushReceivedEventSchema.safeParse({ installationId: 0 }).success, false);
+    });
+
+    it("accepts the cancellation event for the artifact generation function and rejects other functions", () => {
+        const data = {
+            function_id: "creatifact-artifact-app-generate-artifacts-for-request",
+            run_id: "inngest-run-id",
+            event: { data: { artifactRequestId: "b4687374-d4d8-4df1-b795-71d7cf34a550" } },
+        };
+        assert.equal(artifactGenerationCancelledEventSchema.safeParse(data).success, true);
+        assert.equal(artifactGenerationCancelledEventSchema.safeParse({ ...data, function_id: "another-function" }).success, false);
     });
 });

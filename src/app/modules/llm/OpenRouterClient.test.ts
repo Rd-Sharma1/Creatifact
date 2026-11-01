@@ -34,10 +34,32 @@ describe("OpenRouterClient", () => {
         const client = new OpenRouterClient("secret-test-key", fakeFetch, 1000, { record: async record => { records.push(record); } });
         await assert.rejects(
             client.completeJson({ task: "scope", system: "s", user: "u", maxOutputTokens: 50, schema: outputSchema }),
-            error => error instanceof OpenRouterError && error.providerStatus === 429 && error.status === 503 && !error.message.includes("secret-test-key"),
+            error => error instanceof OpenRouterError && error.providerStatus === 429 && error.diagnosticCode === "HTTP_ERROR" && error.status === 503 && !error.message.includes("secret-test-key"),
         );
         assert.equal(records[0]?.outcome, "FAILED");
         assert.equal(records[0]?.failureCategory, "UPSTREAM");
+    });
+
+    it("classifies request failures and timeouts with fixed diagnostic codes", async () => {
+        const requestFailure = new OpenRouterClient("key", async () => { throw new Error("sensitive network detail"); }, 1000, noTelemetry);
+        await assert.rejects(
+            requestFailure.completeJson({ task: "scope", system: "s", user: "u", maxOutputTokens: 50, schema: outputSchema }),
+            error => error instanceof OpenRouterError && error.diagnosticCode === "REQUEST_FAILED" && !error.message.includes("sensitive network detail"),
+        );
+
+        const timeout = new OpenRouterClient("key", async () => { throw new DOMException("sensitive timeout detail", "TimeoutError"); }, 1000, noTelemetry);
+        await assert.rejects(
+            timeout.completeJson({ task: "scope", system: "s", user: "u", maxOutputTokens: 50, schema: outputSchema }),
+            error => error instanceof OpenRouterError && error.diagnosticCode === "REQUEST_TIMEOUT",
+        );
+    });
+
+    it("classifies malformed provider output without exposing its body", async () => {
+        const client = new OpenRouterClient("key", async () => new Response("not-json", { status: 200 }), 1000, noTelemetry);
+        await assert.rejects(
+            client.completeJson({ task: "scope", system: "s", user: "u", maxOutputTokens: 50, schema: outputSchema }),
+            error => error instanceof OpenRouterError && error.diagnosticCode === "OUTPUT_PARSING_ERROR" && !error.message.includes("not-json"),
+        );
     });
 
     it("records safe generation metadata and provider usage without prompt or response content", async () => {

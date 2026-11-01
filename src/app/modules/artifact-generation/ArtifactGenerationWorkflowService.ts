@@ -6,7 +6,10 @@ import { artifactGenerationPersistence } from "./ArtifactGenerationPersistenceSe
 import type { ArtifactGenerationService } from "./ArtifactGenerationService.js";
 import { artifactGenerationService } from "./ArtifactGenerationService.js";
 import { ApplicationError, ConflictError } from "../../common/errors.js";
-import { writeLog } from "../../common/logger.js";
+import { writeLog, type StructuredLogFields, type LogSeverity } from "../../common/logger.js";
+import { OpenRouterError } from "../llm/OpenRouterClient.js";
+
+type WorkflowLogger = (severity: LogSeverity, event: string, fields?: StructuredLogFields) => void;
 
 export type ArtifactGenerationOutcome = { type: ArtifactType; candidates: ArtifactCandidate[] };
 
@@ -22,10 +25,15 @@ export class ArtifactGenerationWorkflowService {
         private readonly contextService: Pick<ArtifactGenerationContextService, "build"> = artifactGenerationContextService,
         private readonly generationService: Pick<ArtifactGenerationService, "generateType"> = artifactGenerationService,
         private readonly persistence: ArtifactGenerationPersistence = artifactGenerationPersistence,
+        private readonly logger: WorkflowLogger = writeLog,
     ) {}
 
     markFailed(artifactRequestId: string): Promise<void> {
         return this.persistence.markFailed(artifactRequestId);
+    }
+
+    markCancelled(artifactRequestId: string): Promise<void> {
+        return this.persistence.markCancelled(artifactRequestId);
     }
 
     async run(
@@ -49,7 +57,7 @@ export class ArtifactGenerationWorkflowService {
             ...(workflowRunId ? { workflowRunId } : {}),
             ...(retryAttempt !== undefined ? { retryAttempt } : {}),
         };
-        writeLog("info", "artifact_generation.started", trace);
+        this.logger("info", "artifact_generation.started", trace);
 
         let context: Awaited<ReturnType<ArtifactGenerationContextService["build"]>>;
         try {
@@ -67,7 +75,7 @@ export class ArtifactGenerationWorkflowService {
                 const existing = await this.persistence.findCandidates(artifactRequestId, type);
                 if (existing.length > 0) {
                     outcomes.push({ type, candidates: existing });
-                    writeLog("info", "artifact_generation.type_skipped", { ...trace, type, candidateCount: existing.length });
+                    this.logger("info", "artifact_generation.type_skipped", { ...trace, type, candidateCount: existing.length });
                     continue;
                 }
 
@@ -76,16 +84,18 @@ export class ArtifactGenerationWorkflowService {
                 stage = "candidate_persistence";
                 const candidates = await this.persistence.persistCandidatesIfAbsent(artifactRequestId, generated);
                 outcomes.push({ type, candidates });
-                writeLog("info", "artifact_generation.type_completed", { ...trace, type, candidateCount: candidates.length });
+                this.logger("info", "artifact_generation.type_completed", { ...trace, type, candidateCount: candidates.length });
             } catch (error) {
                 failedTypes.push(type);
-                writeLog("error", "artifact_generation.type_failed", {
+                this.logger("error", "artifact_generation.type_failed", {
                     ...trace,
                     type,
                     stage,
                     errorName: error instanceof Error ? error.name : "UnknownError",
                     ...(error instanceof ApplicationError ? { errorCode: error.code } : {}),
-                    ...(error instanceof Error && error.cause instanceof Error ? { causeName: error.cause.name } : {}),
+                    provider: error instanceof OpenRouterError ? "openrouter" : undefined,
+                    ...(error instanceof OpenRouterError && error.providerStatus !== undefined ? { providerStatus: error.providerStatus } : {}),
+                    diagnosticCode: error instanceof OpenRouterError ? error.diagnosticCode : "UNEXPECTED_ERROR",
                 });
             }
         }
@@ -97,7 +107,7 @@ export class ArtifactGenerationWorkflowService {
             this.logWorkflowFailure(artifactRequestId, "status_completion", error, trace.correlationId, workflowRunId, retryAttempt);
             throw error;
         }
-        writeLog("info", "artifact_generation.completed", trace);
+        this.logger("info", "artifact_generation.completed", trace);
         return outcomes;
     }
 
@@ -109,7 +119,7 @@ export class ArtifactGenerationWorkflowService {
         workflowRunId?: string,
         retryAttempt?: number,
     ): void {
-        writeLog("error", "artifact_generation.workflow_failed", {
+        this.logger("error", "artifact_generation.workflow_failed", {
             artifactRequestId,
             correlationId,
             workflowRunId,
@@ -117,7 +127,6 @@ export class ArtifactGenerationWorkflowService {
             stage,
             errorName: error instanceof Error ? error.name : "UnknownError",
             ...(error instanceof ApplicationError ? { errorCode: error.code } : {}),
-            ...(error instanceof Error && error.cause instanceof Error ? { causeName: error.cause.name } : {}),
         });
     }
 }

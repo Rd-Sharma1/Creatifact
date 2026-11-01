@@ -9,6 +9,8 @@ import type {
 } from "../../../domain/types.js";
 import type { ArtifactGenerationPersistence } from "./ArtifactGenerationPersistenceService.js";
 import { ArtifactTypesGenerationFailedError, ArtifactGenerationWorkflowService } from "./ArtifactGenerationWorkflowService.js";
+import type { StructuredLogFields, LogSeverity } from "../../common/logger.js";
+import { OpenRouterError } from "../llm/OpenRouterClient.js";
 
 const requestId = "request-id";
 const context: ArtifactGenerationContext = {
@@ -23,7 +25,7 @@ class MemoryGenerationPersistence implements ArtifactGenerationPersistence {
     status: ArtifactRequestStatus = "PENDING";
     readonly candidates = new Map<ArtifactType, ArtifactCandidate[]>();
 
-    async markGenerating(): Promise<ArtifactRequestStatus> {
+    async markGenerating(_artifactRequestId?: string): Promise<ArtifactRequestStatus> {
         if (this.status === "PENDING") this.status = "GENERATING";
         return this.status;
     }
@@ -34,7 +36,11 @@ class MemoryGenerationPersistence implements ArtifactGenerationPersistence {
     }
 
     async markFailed(): Promise<void> {
-        if (this.status !== "COMPLETED") this.status = "FAILED";
+        if (this.status === "GENERATING") this.status = "FAILED";
+    }
+
+    async markCancelled(): Promise<void> {
+        if (this.status === "GENERATING") this.status = "FAILED";
     }
 
     async findCandidates(_id: string, type: ArtifactType): Promise<ArtifactCandidate[]> {
@@ -84,6 +90,7 @@ function makeWorkflow(
     persistence: MemoryGenerationPersistence,
     generate: (type: ArtifactType) => Promise<GeneratedArtifactCandidates["candidates"]>,
     requestedTypes: ArtifactType[] = context.requestedArtifactTypes,
+    logger: (severity: LogSeverity, event: string, fields?: StructuredLogFields) => void = () => {},
 ) {
     const calls = new Map<ArtifactType, number>();
     const generationContext = { ...context, requestedArtifactTypes: requestedTypes };
@@ -96,6 +103,7 @@ function makeWorkflow(
             },
         },
         persistence,
+        logger,
     );
     return { workflow, calls };
 }
@@ -174,6 +182,83 @@ describe("ArtifactGenerationWorkflowService", () => {
         await assert.rejects(workflow.run(requestId), ArtifactTypesGenerationFailedError);
         assert.equal(persistence.status, "GENERATING");
         await workflow.markFailed(requestId);
+        await workflow.markFailed(requestId);
         assert.equal(persistence.status, "FAILED");
+    });
+
+    it("marks cancellation failed only while generating and ignores stale or duplicate callbacks", async () => {
+        const persistence = new MemoryGenerationPersistence();
+        const { workflow } = makeWorkflow(persistence, async type => oneCandidate(`${type} candidate`), ["X_POST"]);
+        await workflow.run(requestId);
+        assert.equal(persistence.status, "COMPLETED");
+
+        await workflow.markCancelled(requestId);
+        await workflow.markFailed(requestId);
+        assert.equal(persistence.status, "COMPLETED");
+    });
+
+    it("does not let a stale callback move a pending request directly to FAILED", async () => {
+        const persistence = new MemoryGenerationPersistence();
+        const { workflow } = makeWorkflow(persistence, async () => oneCandidate("unused"), ["X_POST"]);
+        await workflow.markFailed(requestId);
+        await workflow.markCancelled(requestId);
+        assert.equal(persistence.status, "PENDING");
+    });
+
+    it("marks an in-flight cancellation failed while preserving already persisted candidates", async () => {
+        const persistence = new MemoryGenerationPersistence();
+        const { workflow } = makeWorkflow(persistence, async () => oneCandidate("X candidate"), ["X_POST"]);
+        await persistence.markGenerating(requestId);
+        await persistence.persistCandidatesIfAbsent(requestId, { type: "X_POST", candidates: oneCandidate("X candidate") });
+
+        await workflow.markCancelled(requestId);
+        await workflow.markCancelled(requestId);
+        assert.equal(persistence.status, "FAILED");
+        assert.equal(persistence.candidates.get("X_POST")?.length, 1);
+    });
+
+    it("logs safe OpenRouter diagnostic fields without exception details", async () => {
+        const records: { severity: LogSeverity; event: string; fields?: StructuredLogFields }[] = [];
+        const { workflow } = makeWorkflow(
+            new MemoryGenerationPersistence(),
+            async () => { throw new OpenRouterError("HTTP_ERROR", 429, { cause: new Error("secret provider response") }); },
+            ["X_POST"],
+            (severity, event, fields) => records.push({ severity, event, ...(fields ? { fields } : {}) }),
+        );
+
+        await assert.rejects(
+            workflow.run(requestId, "b4687374-d4d8-4df1-b795-71d7cf34a550", "workflow-run-id", 2),
+            ArtifactTypesGenerationFailedError,
+        );
+        const failure = records.find(record => record.event === "artifact_generation.type_failed");
+        assert.equal(failure?.fields?.provider, "openrouter");
+        assert.equal(failure?.fields?.providerStatus, 429);
+        assert.equal(failure?.fields?.diagnosticCode, "HTTP_ERROR");
+        assert.equal(failure?.fields?.type, "X_POST");
+        assert.equal(failure?.fields?.stage, "generation_and_evaluation");
+        assert.equal(failure?.fields?.artifactRequestId, requestId);
+        assert.equal(failure?.fields?.correlationId, "b4687374-d4d8-4df1-b795-71d7cf34a550");
+        assert.equal(failure?.fields?.workflowRunId, "workflow-run-id");
+        assert.equal(failure?.fields?.retryAttempt, 2);
+        assert.equal(failure?.fields?.errorName, "OpenRouterError");
+        assert.equal(failure?.fields?.errorCode, "UPSTREAM_PROVIDER_ERROR");
+        const serialized = JSON.stringify(failure);
+        assert.equal(serialized.includes("secret provider response"), false);
+        assert.equal(serialized.includes("causeName"), false);
+        assert.equal(serialized.includes("HTTP_ERROR"), true);
+    });
+
+    it("safely categorizes unknown failures without logging their message or cause", async () => {
+        const records: { event: string; fields?: StructuredLogFields }[] = [];
+        const { workflow } = makeWorkflow(
+            new MemoryGenerationPersistence(),
+            async () => { throw new Error("sensitive prompt and output"); },
+            ["X_POST"],
+            (_severity, event, fields) => records.push({ event, ...(fields ? { fields } : {}) }),
+        );
+        await assert.rejects(workflow.run(requestId), ArtifactTypesGenerationFailedError);
+        const failure = records.find(record => record.event === "artifact_generation.type_failed");
+        assert.equal(failure?.fields?.diagnosticCode, "UNEXPECTED_ERROR");
+        assert.equal(JSON.stringify(failure).includes("sensitive prompt and output"), false);
     });
 });

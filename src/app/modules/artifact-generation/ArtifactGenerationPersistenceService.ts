@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "../../../db/index.js";
 import { artifactCandidateTable, artifactRequestTable } from "../../../db/schema.js";
 import type { ArtifactCandidate, ArtifactRequestStatus, ArtifactType, GeneratedArtifactCandidates } from "../../../domain/types.js";
@@ -8,6 +8,7 @@ export interface ArtifactGenerationPersistence {
     markGenerating(artifactRequestId: string): Promise<ArtifactRequestStatus>;
     markCompleted(artifactRequestId: string): Promise<void>;
     markFailed(artifactRequestId: string): Promise<void>;
+    markCancelled(artifactRequestId: string): Promise<void>;
     findCandidates(artifactRequestId: string, type: ArtifactType): Promise<ArtifactCandidate[]>;
     persistCandidatesIfAbsent(artifactRequestId: string, result: GeneratedArtifactCandidates): Promise<ArtifactCandidate[]>;
 }
@@ -44,7 +45,7 @@ export class ArtifactGenerationPersistenceService implements ArtifactGenerationP
             .set({ status: "FAILED", updatedAt: new Date() })
             .where(and(
                 eq(artifactRequestTable.id, artifactRequestId),
-                inArray(artifactRequestTable.status, ["PENDING", "GENERATING", "FAILED"]),
+                eq(artifactRequestTable.status, "GENERATING"),
             ))
             .returning({ id: artifactRequestTable.id });
         if (updated) return;
@@ -52,6 +53,20 @@ export class ArtifactGenerationPersistenceService implements ArtifactGenerationP
         const [current] = await db.select({ status: artifactRequestTable.status })
             .from(artifactRequestTable).where(eq(artifactRequestTable.id, artifactRequestId));
         if (!current) throw new NotFoundError("ArtifactRequest not found");
+    }
+
+    async markCancelled(artifactRequestId: string): Promise<void> {
+        const [updated] = await db.update(artifactRequestTable)
+            .set({ status: "FAILED", updatedAt: new Date() })
+            .where(and(eq(artifactRequestTable.id, artifactRequestId), eq(artifactRequestTable.status, "GENERATING")))
+            .returning({ id: artifactRequestTable.id });
+        if (updated) return;
+
+        const [current] = await db.select({ status: artifactRequestTable.status })
+            .from(artifactRequestTable).where(eq(artifactRequestTable.id, artifactRequestId));
+        if (!current) throw new NotFoundError("ArtifactRequest not found");
+        // Cancellation is terminal only for an in-flight request. This conditional update
+        // leaves completed, pending, and already-failed requests unchanged on stale callbacks.
     }
 
     async findCandidates(artifactRequestId: string, type: ArtifactType): Promise<ArtifactCandidate[]> {

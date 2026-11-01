@@ -14,8 +14,10 @@ const completionResponseSchema = z.object({
     }).optional(),
 });
 
+export type OpenRouterDiagnosticCode = "HTTP_ERROR" | "REQUEST_TIMEOUT" | "REQUEST_FAILED" | "OUTPUT_PARSING_ERROR";
+
 export class OpenRouterError extends UpstreamProviderError {
-    constructor(_reason: string, status?: number, options?: ErrorOptions) {
+    constructor(readonly diagnosticCode: OpenRouterDiagnosticCode, status?: number, options?: ErrorOptions) {
         super("OpenRouter", status, options);
     }
 }
@@ -90,34 +92,37 @@ export class OpenRouterClient {
                     signal: AbortSignal.timeout(this.timeoutMs),
                 });
             } catch (error) {
-                throw new OpenRouterError("OpenRouter request failed or timed out", undefined, { cause: error });
+                const diagnosticCode = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+                    ? "REQUEST_TIMEOUT"
+                    : "REQUEST_FAILED";
+                throw new OpenRouterError(diagnosticCode, undefined, { cause: error });
             }
 
-            if (!response.ok) throw new OpenRouterError(`OpenRouter returned HTTP ${response.status}`, response.status);
+            if (!response.ok) throw new OpenRouterError("HTTP_ERROR", response.status);
 
             failureCategory = "OUTPUT_SCHEMA";
             let responseJson: unknown;
             try {
                 responseJson = await response.json();
             } catch (error) {
-                throw new OpenRouterError("OpenRouter returned invalid JSON", response.status, { cause: error });
+                throw new OpenRouterError("OUTPUT_PARSING_ERROR", response.status, { cause: error });
             }
 
             const parsedResponse = completionResponseSchema.safeParse(responseJson);
-            if (!parsedResponse.success) throw new OpenRouterError("Invalid completion response", response.status);
+            if (!parsedResponse.success) throw new OpenRouterError("OUTPUT_PARSING_ERROR", response.status);
             usage = parsedResponse.data.usage;
             const content = parsedResponse.data.choices[0]?.message.content;
-            if (!content) throw new OpenRouterError("Empty completion", response.status);
+            if (!content) throw new OpenRouterError("OUTPUT_PARSING_ERROR", response.status);
 
             let output: unknown;
             try {
                 output = JSON.parse(content);
             } catch (error) {
-                throw new OpenRouterError("Malformed structured output", response.status, { cause: error });
+                throw new OpenRouterError("OUTPUT_PARSING_ERROR", response.status, { cause: error });
             }
 
             const validated = input.schema.safeParse(output);
-            if (!validated.success) throw new OpenRouterError("Structured output validation failed", response.status);
+            if (!validated.success) throw new OpenRouterError("OUTPUT_PARSING_ERROR", response.status);
             validationFailureCodes = input.telemetry?.validationFailureCodes?.(validated.data) ?? [];
             outcome = validationFailureCodes.length > 0 ? "REJECTED" : "SUCCEEDED";
             if (outcome === "REJECTED") failureCategory = "VALIDATION";

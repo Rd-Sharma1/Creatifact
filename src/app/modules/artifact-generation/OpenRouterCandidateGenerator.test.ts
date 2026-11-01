@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { z } from "zod";
 import type { ArtifactGenerationContext, GenerationCandidateInput } from "../../../domain/types.js";
 import type { OpenRouterClient } from "../llm/OpenRouterClient.js";
 import type { CandidateValidator } from "./CandidateValidator.js";
@@ -17,10 +18,29 @@ function candidate(angle: string, content: string): GenerationCandidateInput {
     return { angle, content, claims: [{ claim: content, evidence: [{ changeSetId: "8c93393c-328e-4d56-b694-04d1a17d8aaa", quote: "Added token validation to login." }] }] };
 }
 
-function modelClient(candidates: GenerationCandidateInput[], onCall?: (input: { user: string }) => void): Pick<OpenRouterClient, "completeJson"> {
+type CapturedPrompt = {
+    system: string;
+    user: string;
+    schema: z.ZodType<unknown>;
+    promptVersion?: string;
+};
+
+function modelClient(candidates: GenerationCandidateInput[], onCall?: (input: CapturedPrompt) => void): Pick<OpenRouterClient, "completeJson"> {
     return {
-        async completeJson<T>(input: { schema: import("zod").ZodType<T>; user?: string }): Promise<T> {
-            if (input.user !== undefined) onCall?.({ user: input.user });
+        async completeJson<T>(input: {
+            schema: import("zod").ZodType<T>;
+            system?: string;
+            user?: string;
+            telemetry?: { promptVersion?: string };
+        }): Promise<T> {
+            if (input.user !== undefined && input.system !== undefined) {
+                onCall?.({
+                    system: input.system,
+                    user: input.user,
+                    schema: input.schema as z.ZodType<unknown>,
+                    ...(input.telemetry?.promptVersion ? { promptVersion: input.telemetry.promptVersion } : {}),
+                });
+            }
             return input.schema.parse({ candidates });
         },
     };
@@ -47,6 +67,26 @@ describe("OpenRouterCandidateGenerator", () => {
         ]), validator);
         const result = await generator.generate(context);
         assert.equal(result.candidates.length, 1);
+    });
+
+    it("documents and exemplifies the exact candidate schema in the versioned prompt", async () => {
+        let captured: CapturedPrompt | undefined;
+        const generator = new OpenRouterCandidateGenerator("X_POST", modelClient([
+            candidate("Token checks", "Login validates tokens."),
+        ], prompt => { captured = prompt; }), { validate: async () => [] });
+
+        await generator.generate(context);
+
+        assert.ok(captured);
+        const prompt = captured;
+        assert.match(prompt.system, /angle.*maximum 120 characters/);
+        assert.match(prompt.system, /changeSetId as a valid UUID/);
+        assert.match(prompt.system, /quote.*12–400 characters inclusive/);
+        const exampleMatch = prompt.system.match(/Example: (\{.*\})\./);
+        assert.ok(exampleMatch);
+        const example: unknown = JSON.parse(exampleMatch[1]!);
+        assert.doesNotThrow(() => prompt.schema.parse(example));
+        assert.equal(prompt.promptVersion, "candidate-generation.v2");
     });
 
     it("sanitizes instructions and evidence before candidate generation and retains useful code", async () => {
