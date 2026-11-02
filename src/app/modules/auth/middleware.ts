@@ -7,6 +7,7 @@ import { parseOrThrow } from "../../common/validation.js";
 import { authCookieNames, authenticateSession, readCookie } from "./githubAuth.js";
 import { userHasRepositoryAccess } from "./repositoryAuthorization.js";
 import { artifactRequestCreateSchema, artifactRequestParamsSchema } from "../artifact-request/schema.js";
+import { isAllowedOrigin } from "../../middleware/cors.js";
 
 export async function requireSession(req: Request, res: Response, next: NextFunction): Promise<void> {
     const token = readCookie(req.headers.cookie, authCookieNames.session);
@@ -27,15 +28,6 @@ export function protectUnsafeRequests(req: Request, _res: Response, next: NextFu
         throw new AuthorizationError("Request origin is not allowed");
     }
     next();
-}
-
-export function isAllowedOrigin(origin: string | undefined, expectedOrigin: string | undefined): boolean {
-    if (!origin || !expectedOrigin) return false;
-    try {
-        return origin === new URL(expectedOrigin).origin;
-    } catch {
-        return false;
-    }
 }
 
 export async function authorizeArtifactRequest(req: Request, res: Response, next: NextFunction): Promise<void> {

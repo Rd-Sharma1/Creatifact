@@ -5,7 +5,7 @@ import { parseOrThrow } from "../../common/validation.js";
 import { db } from "../../../db/index.js";
 import { user, user_repository, repository } from "../../../db/schema.js";
 import { eq } from "drizzle-orm";
-import { createOAuthFlow, completeGithubCallback, clearOAuthStateCookie, clearSessionCookie, oauthStateCookie, readCookie, revokeSession, sessionCookie, authCookieNames, authenticateSession } from "./githubAuth.js";
+import { createOAuthFlow, completeGithubCallback, clearOAuthStateCookie, clearSessionCookie, oauthStateCookie, readCookie, revokeSession, sessionCookie, authCookieNames, authenticateSession, frontendDashboardUrl } from "./githubAuth.js";
 
 const callbackQuerySchema = z.object({
     code: z.string().min(1).max(512),
@@ -39,13 +39,7 @@ export async function githubCallback(req: Request, res: Response): Promise<void>
         ...(currentUserId ? { currentUserId } : {}),
     });
     if (result.sessionToken) res.append("Set-Cookie", sessionCookie(result.sessionToken));
-    const linkedInstallations = result.intent === "LOGIN" ? result.linkedInstallations ?? 0 : 1;
-    res.status(200).json({
-        authenticated: true,
-        userId: result.userId,
-        installationLinked: linkedInstallations > 0,
-        linkedInstallations,
-    });
+    res.redirect(303, frontendDashboardUrl());
 }
 
 export async function logout(req: Request, res: Response): Promise<void> {

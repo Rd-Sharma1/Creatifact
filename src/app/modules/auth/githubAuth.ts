@@ -46,6 +46,19 @@ function requiredEnv(name: string): string {
     return value;
 }
 
+export function frontendDashboardUrl(frontendOrigin = requiredEnv("APP_ORIGIN")): string {
+    let parsed: URL;
+    try {
+        parsed = new URL(frontendOrigin);
+    } catch {
+        throw new ConfigurationError({ variables: ["APP_ORIGIN"] });
+    }
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+        throw new ConfigurationError({ variables: ["APP_ORIGIN"] });
+    }
+    return new URL("/dashboard", parsed.origin).toString();
+}
+
 function digest(value: string): string {
     return createHash("sha256").update(value).digest("hex");
 }

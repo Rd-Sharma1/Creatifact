@@ -11,11 +11,13 @@ import { requestContextMiddleware } from "./middleware/requestContext.js";
 import { authRouter, repositoryRouter } from "./modules/auth/routes.js";
 import { errorMiddleware } from "./common/errorMiddleware.js";
 import { ConfigurationError, DependencyUnavailableError, NotFoundError } from "./common/errors.js";
+import { corsMiddleware } from "./middleware/cors.js";
 
 export function createApplications(): Express {
     //Intialize express application
     const app = express();
     app.use(requestContextMiddleware);
+    app.use(corsMiddleware);
 
     //This route needs the raw body for signature verification, so this is before the express.json() middleware
     app.use("/api/webhook", webhookRouter);

@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --charcoal: #151513;
+  --surface: #1d1d1a;
+  --paper: #eee9df;
+  --muted: #a09a8f;
+  --line: #3b3932;
+  --amber: #c97748;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-height: 100vh;
+  background: var(--charcoal);
+  color: var(--paper);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button, a { -webkit-tap-highlight-color: transparent; }
+
+::selection { background: var(--amber); color: var(--charcoal); }

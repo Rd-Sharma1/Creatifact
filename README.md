@@ -8,7 +8,7 @@ Server logs are structured JSON records with a timestamp, severity, event name, 
 
 ## Local configuration
 
-Copy `.env.example` to `.env` and configure the database, GitHub App, OpenRouter, and Inngest values needed by your deployment. Keep `.env` private. Set `APP_ORIGIN` to the same site that serves the API and frontend. Set `AUTH_COOKIE_SECURE=true` for HTTPS deployments; the example disables it only for local HTTP development.
+Copy `.env.example` to `.env` and configure the database, GitHub App, OpenRouter, and Inngest values needed by your deployment. Keep `.env` private. `APP_ORIGIN` is the exact frontend origin allowed by the API's credentialed CORS and unsafe-request Origin checks. Set `AUTH_COOKIE_SECURE=true` for HTTPS deployments; the example disables it only for local HTTP development.
 
 ### Database preflight and tests
 
@@ -62,6 +62,12 @@ Authentication uses an HttpOnly session cookie backed by hashed, expiring databa
 
 Configure the existing GitHub App with `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_CALLBACK_URL`, and `GITHUB_APP_SLUG`. Enable OAuth after installation and subscribe to `installation`, `installation_repositories`, and `push` events. The callback verifies installation access using the temporary GitHub user token and does not persist that token. Webhook HMAC verification remains separate from user authentication.
 
-The repository currently has no frontend. Until the GitHub App configuration, migrations, auth flows, and protected API behavior have been integration-tested in the deployment environment, keep the service private.
+Until the GitHub App configuration, migrations, auth flows, and protected API behavior have been integration-tested in the deployment environment, keep the service private.
+
+### Frontend development
+
+The Next.js App Router application lives in `frontend/` and uses its own package manifest and lockfile. Run `npm ci`, copy `frontend/.env.example` to `frontend/.env.local`, then run `npm run dev` from `frontend/`. Its local API URL is `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`. The backend remains on port 8080 and `APP_ORIGIN` should be `http://localhost:3000` for local browser requests. The frontend calls the API directly with credentialed requests; it does not proxy API traffic through Next.js.
+
+For the planned deployment, configure the Vercel frontend with `NEXT_PUBLIC_API_BASE_URL=https://api.creatifact.ridam.in`. Set the backend `APP_ORIGIN=https://creatifact.ridam.in`, `AUTH_COOKIE_SECURE=true`, and `GITHUB_APP_CALLBACK_URL=https://api.creatifact.ridam.in/api/auth/github/callback`. The API allows credentialed CORS only from `APP_ORIGIN`. The session cookie remains HttpOnly, Secure, SameSite=Lax, and host-only on the API domain. The OAuth callback redirects successful login and installation flows to the fixed `/dashboard` path on `APP_ORIGIN`; it does not accept a caller-supplied return URL.
 
 Health endpoints are `/health/live` and `/health/ready`.

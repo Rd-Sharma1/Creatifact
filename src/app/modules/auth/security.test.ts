@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { authCookieNames, findVerifiedInstallation, isSameGithubUser, oauthStateMatches, readCookie, sessionCookie } from "./githubAuth.js";
-import { isAllowedOrigin } from "./middleware.js";
+import { authCookieNames, findVerifiedInstallation, frontendDashboardUrl, isSameGithubUser, oauthStateMatches, readCookie, sessionCookie } from "./githubAuth.js";
+import { isAllowedOrigin } from "../../middleware/cors.js";
 
 describe("GitHub auth boundary helpers", () => {
     it("reads the exact cookie name and preserves opaque token characters", () => {
@@ -35,6 +35,12 @@ describe("GitHub auth boundary helpers", () => {
         assert.equal(oauthStateMatches("random-state", "random-state"), true);
         assert.equal(oauthStateMatches("attacker-state", "browser-state"), false);
         assert.equal(oauthStateMatches("state", undefined), false);
+    });
+
+    it("builds the fixed dashboard redirect from the configured frontend origin", () => {
+        assert.equal(frontendDashboardUrl("https://creatifact.ridam.in"), "https://creatifact.ridam.in/dashboard");
+        assert.equal(frontendDashboardUrl("https://creatifact.ridam.in/untrusted?next=https://evil.test"), "https://creatifact.ridam.in/dashboard");
+        assert.throws(() => frontendDashboardUrl("javascript:alert(1)"));
     });
 
     it("accepts only the expected, active GitHub App installation", () => {
