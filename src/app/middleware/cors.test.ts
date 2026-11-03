@@ -34,6 +34,46 @@ function runCors(input: {
 }
 
 describe("credentialed CORS middleware", () => {
+    it("allows the configured local frontend origin and credentials on actual requests", () => {
+        const previous = process.env.APP_ORIGIN;
+        process.env.APP_ORIGIN = "http://localhost:3000";
+        try {
+            for (const method of ["GET", "POST", "PATCH"]) {
+                const result = runCors({ method, origin: "http://localhost:3000" });
+                assert.equal(result.headers.get("Access-Control-Allow-Origin"), "http://localhost:3000");
+                assert.equal(result.headers.get("Access-Control-Allow-Credentials"), "true");
+            }
+            const wrongOrigin = runCors({ method: "GET", origin: "https://gentile-oblivion-otter.ngrok-free.dev" });
+            assert.equal(wrongOrigin.headers.has("Access-Control-Allow-Origin"), false);
+        } finally {
+            if (previous === undefined) delete process.env.APP_ORIGIN;
+            else process.env.APP_ORIGIN = previous;
+        }
+    });
+
+    it("answers local POST and PATCH preflights without wildcard origins", () => {
+        const previous = process.env.APP_ORIGIN;
+        process.env.APP_ORIGIN = "http://localhost:3000";
+        try {
+            for (const method of ["POST", "PATCH"]) {
+                const result = runCors({
+                    method: "OPTIONS",
+                    origin: "http://localhost:3000",
+                    requestMethod: method,
+                    requestHeaders: "content-type, accept",
+                });
+                assert.equal(result.statusCode, 204);
+                assert.equal(result.ended, true);
+                assert.equal(result.headers.get("Access-Control-Allow-Origin"), "http://localhost:3000");
+                assert.equal(result.headers.get("Access-Control-Allow-Credentials"), "true");
+                assert.notEqual(result.headers.get("Access-Control-Allow-Origin"), "*");
+            }
+        } finally {
+            if (previous === undefined) delete process.env.APP_ORIGIN;
+            else process.env.APP_ORIGIN = previous;
+        }
+    });
+
     it("allows the exact configured origin with credentials and required API methods", () => {
         const previous = process.env.APP_ORIGIN;
         process.env.APP_ORIGIN = "https://creatifact.ridam.in";

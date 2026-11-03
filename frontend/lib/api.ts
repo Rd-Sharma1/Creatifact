@@ -96,11 +96,27 @@ export class AuthenticationRequiredError extends ApiClientError {
 }
 
 const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-const apiBaseUrl = (configuredApiBaseUrl || (process.env.NODE_ENV === "production" ? "" : "http://localhost:8080")).replace(/\/+$/, "");
+const API_REQUEST_TIMEOUT_MS = 15_000;
+
+export function resolveApiUrl(path: string, configuredBase: string | undefined, environment: string | undefined): string {
+    const apiBaseUrl = (configuredBase === undefined
+        ? (environment === "production" ? "" : "http://localhost:8080")
+        : configuredBase).replace(/\/+$/, "");
+    if (environment === "production" && !apiBaseUrl) throw new Error("NEXT_PUBLIC_API_BASE_URL is required in production.");
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    return apiBaseUrl ? `${apiBaseUrl}${normalizedPath}` : normalizedPath;
+}
 
 export function apiUrl(path: string): string {
-    if (!apiBaseUrl) throw new Error("NEXT_PUBLIC_API_BASE_URL is required in production.");
-    return `${apiBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+    return resolveApiUrl(path, configuredApiBaseUrl, process.env.NODE_ENV);
+}
+
+export function resolveApiRequestUrl(path: string, configuredBase: string | undefined, environment: string | undefined, browserOrigin?: string): string {
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    if (environment === "development" && configuredBase && browserOrigin && new URL(configuredBase).origin !== browserOrigin) {
+        return normalizedPath;
+    }
+    return resolveApiUrl(path, configuredBase, environment);
 }
 
 function isApiErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
@@ -119,7 +135,18 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
 
     let response: Response;
     try {
-        response = await fetch(apiUrl(path), { ...init, headers, credentials: "include" });
+        const browserOrigin = typeof window === "undefined" ? undefined : window.location.origin;
+        const isReadRequest = (init.method ?? "GET").toUpperCase() === "GET";
+        const timeoutSignal = isReadRequest ? AbortSignal.timeout(API_REQUEST_TIMEOUT_MS) : undefined;
+        const signal = timeoutSignal
+            ? init.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal
+            : init.signal;
+        response = await fetch(resolveApiRequestUrl(path, configuredApiBaseUrl, process.env.NODE_ENV, browserOrigin), {
+            ...init,
+            headers,
+            credentials: "include",
+            ...(signal ? { signal } : {}),
+        });
     } catch {
         throw new ApiClientError("The API could not be reached. Check your connection and try again.", 0, "NETWORK_ERROR", null);
     }

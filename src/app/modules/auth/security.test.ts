@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { authCookieNames, findVerifiedInstallation, frontendDashboardUrl, isSameGithubUser, oauthStateMatches, readCookie, sessionCookie } from "./githubAuth.js";
+import { authCookieNames, findVerifiedInstallation, frontendDashboardUrl, isSameGithubUser, oauthStateCookie, oauthStateMatches, readCookie, sessionCookie } from "./githubAuth.js";
 import { isAllowedOrigin } from "../../middleware/cors.js";
 
 describe("GitHub auth boundary helpers", () => {
@@ -23,9 +23,28 @@ describe("GitHub auth boundary helpers", () => {
         assert.match(cookie, /Path=\//);
     });
 
+    it("keeps the OAuth state cookie secure, host-only, and consistent with the callback host", () => {
+        const previous = process.env.AUTH_COOKIE_SECURE;
+        process.env.AUTH_COOKIE_SECURE = "true";
+        try {
+            const cookie = oauthStateCookie("opaque-state");
+            assert.match(cookie, /^creatifact_oauth_state=opaque-state;/);
+            assert.match(cookie, /HttpOnly/);
+            assert.match(cookie, /SameSite=Lax/);
+            assert.match(cookie, /Secure/);
+            assert.match(cookie, /Path=\//);
+            assert.doesNotMatch(cookie, /Domain=/i);
+        } finally {
+            if (previous === undefined) delete process.env.AUTH_COOKIE_SECURE;
+            else process.env.AUTH_COOKIE_SECURE = previous;
+        }
+    });
+
     it("accepts only the configured application origin for unsafe requests", () => {
         assert.equal(isAllowedOrigin("https://app.example.test", "https://app.example.test"), true);
+        assert.equal(isAllowedOrigin("http://localhost:3000", "http://localhost:3000"), true);
         assert.equal(isAllowedOrigin("https://evil.example.test", "https://app.example.test"), false);
+        assert.equal(isAllowedOrigin("https://gentile-oblivion-otter.ngrok-free.dev", "http://localhost:3000"), false);
         assert.equal(isAllowedOrigin(undefined, "https://app.example.test"), false);
         assert.equal(isAllowedOrigin("not an origin", "https://app.example.test"), false);
         assert.equal(isAllowedOrigin("https://app.example.test", undefined), false);
