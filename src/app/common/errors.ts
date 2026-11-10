@@ -57,7 +57,7 @@ export class ConflictError extends ApplicationError {
 
 export class UpstreamProviderError extends ApplicationError {
     constructor(
-        readonly provider: "GitHub" | "OpenRouter" | "Inngest",
+        readonly provider: "GitHub" | "Gemini" | "OpenRouter" | "Inngest",
         readonly providerStatus?: number,
         options?: ErrorOptions,
     ) {

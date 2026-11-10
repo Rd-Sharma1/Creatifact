@@ -4,33 +4,79 @@ import { ConfigurationError, UpstreamProviderError } from "../../common/errors.j
 import { writeLog } from "../../common/logger.js";
 import { aiRunTelemetry, type AiFailureCategory, type AiOperation, type AiRunRecorder } from "./AiRunTelemetry.js";
 
-const completionResponseSchema = z.object({
-    choices: z.array(z.object({ message: z.object({ content: z.string().nullable() }) })).min(1),
-    usage: z.object({
-        prompt_tokens: z.number().int().nonnegative().optional(),
-        completion_tokens: z.number().int().nonnegative().optional(),
-        total_tokens: z.number().int().nonnegative().optional(),
-        cost: z.number().nonnegative().optional(),
-    }).optional(),
-});
+const completionResponseSchema = z
+    .object({
+        choices: z
+            .array(z.object({ message: z.object({ content: z.string().nullable() }) }))
+            .min(1)
+            .optional(),
+        candidates: z
+            .array(
+                z.object({
+                    content: z
+                        .object({
+                            parts: z.array(z.object({ text: z.string().nullable().optional() })).min(1),
+                        })
+                        .optional(),
+                }),
+            )
+            .min(1)
+            .optional(),
+        usage: z
+            .object({
+                prompt_tokens: z.number().int().nonnegative().optional(),
+                completion_tokens: z.number().int().nonnegative().optional(),
+                total_tokens: z.number().int().nonnegative().optional(),
+                cost: z.number().nonnegative().optional(),
+            })
+            .optional(),
+        usageMetadata: z
+            .object({
+                promptTokenCount: z.number().int().nonnegative().optional(),
+                candidatesTokenCount: z.number().int().nonnegative().optional(),
+                totalTokenCount: z.number().int().nonnegative().optional(),
+            })
+            .optional(),
+    })
+    .passthrough();
 
 export type OpenRouterDiagnosticCode = "HTTP_ERROR" | "REQUEST_TIMEOUT" | "REQUEST_FAILED" | "OUTPUT_PARSING_ERROR";
 
 export class OpenRouterError extends UpstreamProviderError {
-    constructor(readonly diagnosticCode: OpenRouterDiagnosticCode, status?: number, options?: ErrorOptions) {
-        super("OpenRouter", status, options);
+    constructor(
+        readonly diagnosticCode: OpenRouterDiagnosticCode,
+        status?: number,
+        options?: ErrorOptions,
+    ) {
+        super("Gemini", status, options);
     }
 }
 
 export type OpenRouterTask = "scope" | "generation";
 
+function firstConfiguredEnv(...keys: string[]): string | undefined {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value && value.trim()) return value;
+    }
+    return undefined;
+}
+
 export class OpenRouterClient {
     constructor(
-        private readonly apiKey = process.env.OPENROUTER_API_KEY,
+        private readonly apiKey = firstConfiguredEnv("GEMINI_API_KEY", "LLM_API_KEY", "OPENROUTER_API_KEY"),
         private readonly fetcher: typeof fetch = fetch,
         private readonly timeoutMs = 45_000,
         private readonly telemetry: AiRunRecorder = aiRunTelemetry,
     ) {}
+
+    private getModel(task: OpenRouterTask): string | undefined {
+        const model =
+            task === "scope"
+                ? firstConfiguredEnv("GEMINI_SCOPE_MODEL", "LLM_SCOPE_MODEL", "OPENROUTER_SCOPE_MODEL")
+                : firstConfiguredEnv("GEMINI_GENERATION_MODEL", "LLM_GENERATION_MODEL", "OPENROUTER_GENERATION_MODEL");
+        return model ?? (task === "scope" ? "gemini-2.0-flash" : "gemini-2.0-flash");
+    }
 
     async completeJson<T>(input: {
         task: OpenRouterTask;
@@ -50,51 +96,67 @@ export class OpenRouterClient {
     }): Promise<T> {
         const startedAt = new Date();
         const started = performance.now();
-        const model = input.task === "scope"
-            ? process.env.OPENROUTER_SCOPE_MODEL
-            : process.env.OPENROUTER_GENERATION_MODEL;
-        const operation = input.telemetry?.operation ?? (input.task === "scope" ? "scope_interpretation" : "generation");
+        const model = this.getModel(input.task);
+        const operation =
+            input.telemetry?.operation ?? (input.task === "scope" ? "scope_interpretation" : "generation");
         let failureCategory: AiFailureCategory = "UNKNOWN";
-        let usage: z.infer<typeof completionResponseSchema>["usage"] = undefined;
+        let usage:
+            | {
+                  prompt_tokens?: number | undefined;
+                  completion_tokens?: number | undefined;
+                  total_tokens?: number | undefined;
+                  cost?: number | undefined;
+              }
+            | undefined;
         let outcome: "SUCCEEDED" | "FAILED" | "REJECTED" = "FAILED";
         let validationFailureCodes: string[] = [];
         try {
             if (!this.apiKey) {
                 failureCategory = "CONFIGURATION";
-                throw new ConfigurationError({ variables: ["OPENROUTER_API_KEY"] });
+                throw new ConfigurationError({ variables: ["GEMINI_API_KEY", "LLM_API_KEY", "OPENROUTER_API_KEY"] });
             }
             if (!model) {
                 failureCategory = "CONFIGURATION";
-                throw new ConfigurationError({ variables: [`OPENROUTER_${input.task.toUpperCase()}_MODEL`] });
+                throw new ConfigurationError({
+                    variables: [
+                        "GEMINI_GENERATION_MODEL",
+                        "GEMINI_SCOPE_MODEL",
+                        "LLM_GENERATION_MODEL",
+                        "LLM_SCOPE_MODEL",
+                        "OPENROUTER_GENERATION_MODEL",
+                        "OPENROUTER_SCOPE_MODEL",
+                    ],
+                });
             }
 
             failureCategory = "UPSTREAM";
             let response: Response;
             try {
-                response = await this.fetcher("https://openrouter.ai/api/v1/chat/completions", {
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: input.user }] }],
+                    ...(input.system ? { systemInstruction: { parts: [{ text: input.system }] } } : {}),
+                    generationConfig: {
+                        maxOutputTokens: input.maxOutputTokens,
+                        responseMimeType: "application/json",
+                    },
+                };
+                const url = new URL(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+                );
+                url.searchParams.set("key", this.apiKey);
+                response = await this.fetcher(url, {
                     method: "POST",
                     headers: {
-                        authorization: `Bearer ${this.apiKey}`,
                         "content-type": "application/json",
                     },
-                    body: JSON.stringify({
-                        model,
-                        messages: [
-                            { role: "system", content: input.system },
-                            { role: "user", content: input.user },
-                        ],
-                        max_tokens: input.maxOutputTokens,
-                        temperature: 0.2,
-                        response_format: { type: "json_object" },
-                        provider: { data_collection: "deny", zdr: true },
-                        stream: false,
-                    }),
+                    body: JSON.stringify(payload),
                     signal: AbortSignal.timeout(this.timeoutMs),
                 });
             } catch (error) {
-                const diagnosticCode = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
-                    ? "REQUEST_TIMEOUT"
-                    : "REQUEST_FAILED";
+                const diagnosticCode =
+                    error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+                        ? "REQUEST_TIMEOUT"
+                        : "REQUEST_FAILED";
                 throw new OpenRouterError(diagnosticCode, undefined, { cause: error });
             }
 
@@ -110,8 +172,22 @@ export class OpenRouterClient {
 
             const parsedResponse = completionResponseSchema.safeParse(responseJson);
             if (!parsedResponse.success) throw new OpenRouterError("OUTPUT_PARSING_ERROR", response.status);
-            usage = parsedResponse.data.usage;
-            const content = parsedResponse.data.choices[0]?.message.content;
+            const rawUsage: typeof usage = parsedResponse.data.usage ?? {
+                prompt_tokens: parsedResponse.data.usageMetadata?.promptTokenCount,
+                completion_tokens: parsedResponse.data.usageMetadata?.candidatesTokenCount,
+                total_tokens: parsedResponse.data.usageMetadata?.totalTokenCount,
+            };
+            usage = rawUsage;
+
+            const candidates =
+                parsedResponse.data.candidates ??
+                parsedResponse.data.choices?.map(choice => ({
+                    content: {
+                        parts: [{ text: choice.message.content }],
+                    },
+                })) ??
+                [];
+            const content = candidates[0]?.content?.parts?.map(part => part.text ?? "").join("") ?? null;
             if (!content) throw new OpenRouterError("OUTPUT_PARSING_ERROR", response.status);
 
             let output: unknown;

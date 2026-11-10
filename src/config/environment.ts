@@ -1,10 +1,8 @@
 import { z } from "zod";
 import { ConfigurationError } from "../app/common/errors.js";
 
-const optionalString = <T extends z.ZodType>(schema: T) => z.preprocess(
-    value => value === "" ? undefined : value,
-    schema.optional(),
-);
+const optionalString = <T extends z.ZodType>(schema: T) =>
+    z.preprocess(value => (value === "" ? undefined : value), schema.optional());
 const postgresUrlSchema = z.url().refine(value => ["postgres:", "postgresql:"].includes(new URL(value).protocol));
 
 export const environmentSchema = z.object({
@@ -14,7 +12,12 @@ export const environmentSchema = z.object({
     PREFLIGHT_DATABASE_URL: optionalString(postgresUrlSchema),
     INNGEST_EVENT_KEY: optionalString(z.string().min(1)),
     INNGEST_SIGNING_KEY: optionalString(z.string().min(1)),
-    GITHUB_APP_ID: optionalString(z.string().regex(/^\d+$/).refine(value => BigInt(value) <= BigInt(Number.MAX_SAFE_INTEGER))),
+    GITHUB_APP_ID: optionalString(
+        z
+            .string()
+            .regex(/^\d+$/)
+            .refine(value => BigInt(value) <= BigInt(Number.MAX_SAFE_INTEGER)),
+    ),
     GITHUB_APP_SLUG: optionalString(z.string().min(1)),
     GITHUB_APP_CLIENT_ID: optionalString(z.string().min(1)),
     GITHUB_APP_CLIENT_SECRET: optionalString(z.string().min(1)),
@@ -23,6 +26,12 @@ export const environmentSchema = z.object({
     GITHUB_WEBHOOK_SECRET: optionalString(z.string().min(1)),
     APP_ORIGIN: optionalString(z.url()),
     AUTH_COOKIE_SECURE: optionalString(z.enum(["true", "false"])),
+    GEMINI_API_KEY: optionalString(z.string().min(1)),
+    GEMINI_GENERATION_MODEL: optionalString(z.string().min(1)),
+    GEMINI_SCOPE_MODEL: optionalString(z.string().min(1)),
+    LLM_API_KEY: optionalString(z.string().min(1)),
+    LLM_GENERATION_MODEL: optionalString(z.string().min(1)),
+    LLM_SCOPE_MODEL: optionalString(z.string().min(1)),
     OPENROUTER_API_KEY: optionalString(z.string().min(1)),
     OPENROUTER_GENERATION_MODEL: optionalString(z.string().min(1)),
     OPENROUTER_SCOPE_MODEL: optionalString(z.string().min(1)),

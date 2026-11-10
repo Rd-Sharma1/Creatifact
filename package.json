@@ -21,6 +21,8 @@
         "test-db-push": "node dist/app/modules/changeset/index"
     },
     "dependencies": {
+        "@supabase/ssr": "^0.12.7",
+        "@supabase/supabase-js": "^2.119.0",
         "dotenv": "^17.4.2",
         "drizzle-orm": "^0.45.2",
         "express": "^5.2.1",
