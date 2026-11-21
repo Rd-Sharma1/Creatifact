@@ -11,7 +11,7 @@ describe("OpenRouterClient", () => {
         const previousApiKey = process.env.GEMINI_API_KEY;
         const previousModel = process.env.GEMINI_GENERATION_MODEL;
         process.env.GEMINI_API_KEY = "test-key";
-        process.env.GEMINI_GENERATION_MODEL = "gemini-2.0-flash";
+        process.env.GEMINI_GENERATION_MODEL = "gemini-3-flash-preview";
         let requestUrl: string | undefined;
         let requestBody: Record<string, unknown> | undefined;
         const fakeFetch: typeof fetch = async (input, init) => {
@@ -36,7 +36,7 @@ describe("OpenRouterClient", () => {
             assert.deepEqual(result, { value: "ok" });
             assert.equal(
                 requestUrl,
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=test-key",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=test-key",
             );
             const generationConfig = (requestBody as Record<string, unknown> | undefined)?.generationConfig as
                 | Record<string, unknown>
@@ -56,7 +56,7 @@ describe("OpenRouterClient", () => {
         const previousApiKey = process.env.OPENROUTER_API_KEY;
         const previousModel = process.env.OPENROUTER_GENERATION_MODEL;
         process.env.OPENROUTER_API_KEY = "legacy-key";
-        process.env.OPENROUTER_GENERATION_MODEL = "gemini-2.0-flash";
+        process.env.OPENROUTER_GENERATION_MODEL = "gemini-3-flash-preview";
         let requestUrl: string | undefined;
         let requestBody: Record<string, unknown> | undefined;
         const fakeFetch: typeof fetch = async (input, init) => {
@@ -71,7 +71,7 @@ describe("OpenRouterClient", () => {
             );
         };
         try {
-            const result = await new OpenRouterClient(undefined, fakeFetch, 1000, noTelemetry).completeJson({
+            const result = await new OpenRouterClient("legacy-key", fakeFetch, 1000, noTelemetry).completeJson({
                 task: "generation",
                 system: "system",
                 user: "user",
@@ -81,7 +81,7 @@ describe("OpenRouterClient", () => {
             assert.deepEqual(result, { value: "ok" });
             assert.equal(
                 requestUrl,
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=legacy-key",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=legacy-key",
             );
             const generationConfig = (requestBody as Record<string, unknown> | undefined)?.generationConfig as
                 | Record<string, unknown>

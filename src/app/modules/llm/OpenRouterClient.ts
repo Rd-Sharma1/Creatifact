@@ -75,7 +75,7 @@ export class OpenRouterClient {
             task === "scope"
                 ? firstConfiguredEnv("GEMINI_SCOPE_MODEL", "LLM_SCOPE_MODEL", "OPENROUTER_SCOPE_MODEL")
                 : firstConfiguredEnv("GEMINI_GENERATION_MODEL", "LLM_GENERATION_MODEL", "OPENROUTER_GENERATION_MODEL");
-        return model ?? (task === "scope" ? "gemini-2.0-flash" : "gemini-2.0-flash");
+        return model ?? "gemini-3-flash-preview";
     }
 
     async completeJson<T>(input: {
@@ -138,6 +138,8 @@ export class OpenRouterClient {
                     generationConfig: {
                         maxOutputTokens: input.maxOutputTokens,
                         responseMimeType: "application/json",
+                        responseSchema: z.toJSONSchema(input.schema),
+                        thinkingConfig: { thinkingBudget: 0 },
                     },
                 };
                 const url = new URL(
@@ -192,7 +194,8 @@ export class OpenRouterClient {
 
             let output: unknown;
             try {
-                output = JSON.parse(content);
+                const jsonText = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+                output = JSON.parse(jsonText);
             } catch (error) {
                 throw new OpenRouterError("OUTPUT_PARSING_ERROR", response.status, { cause: error });
             }

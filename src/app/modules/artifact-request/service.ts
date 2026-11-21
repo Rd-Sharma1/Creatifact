@@ -8,10 +8,14 @@ import {
     repository,
 } from "../../../db/schema.js";
 import type { ArtifactRequest, ArtifactRequestScope, ChangeSetRole } from "../../../domain/types.js";
+import { parseOrThrow } from "../../common/validation.js";
+import { inngest } from "../inngest/client.js";
+import { artifactGenerationRequestedEventSchema } from "../inngest/eventSchemas.js";
+import { artifactGenerationOutboxService } from "./ArtifactGenerationOutboxService.js";
 import { activityMapRepository, type ActivityMapReader } from "./activity/ActivityMapRepository.js";
 import { artifactIntentResolver, type ArtifactIntentInterpreter } from "./intent/ArtifactIntentResolver.js";
-import type { ArtifactRequestCreateInput } from "./schema.js";
 import { workHistoryRetriever, type WorkHistoryRetrieverContract } from "./retrieval/WorkHistoryRetriever.js";
+import type { ArtifactRequestCreateInput } from "./schema.js";
 
 export type CreateArtifactRequestResult =
     | { kind: "repository-not-found" }
@@ -74,30 +78,51 @@ export async function createArtifactRequest(
 
         if (!request) throw new Error("ArtifactRequest insert did not return a row");
 
-        await tx.insert(artifactRequestTypeTable).values(input.artifactTypes.map(type => ({
-            artifactRequestId: request.id,
-            type,
-        })));
+        await tx.insert(artifactRequestTypeTable).values(
+            input.artifactTypes.map(type => ({
+                artifactRequestId: request.id,
+                type,
+            })),
+        );
 
-        await tx.insert(artifactRequestChangeSetTable).values(resolvedChangeSets.map(({ changeSet, role }) => ({
-            artifactRequestId: request.id,
-            changeSetId: changeSet.id,
-            role: role satisfies ChangeSetRole,
-        })));
+        await tx.insert(artifactRequestChangeSetTable).values(
+            resolvedChangeSets.map(({ changeSet, role }) => ({
+                artifactRequestId: request.id,
+                changeSetId: changeSet.id,
+                role: role satisfies ChangeSetRole,
+            })),
+        );
 
-        await tx.insert(artifactGenerationOutboxTable).values({
-            artifactRequestId: request.id,
-            correlationId: dependencies.correlationId,
-        });
-        return request;
+        const [outbox] = await tx
+            .insert(artifactGenerationOutboxTable)
+            .values({
+                artifactRequestId: request.id,
+                correlationId: dependencies.correlationId,
+            })
+            .returning({ id: artifactGenerationOutboxTable.id });
+
+        if (!outbox) throw new Error("Artifact generation outbox insert did not return a row");
+        return { request, outboxId: outbox.id };
     });
+
+    await inngest.send({
+        name: "artifact/generation.requested",
+        data: parseOrThrow(artifactGenerationRequestedEventSchema, {
+            artifactRequestId: createdRequest.request.id,
+            ...(dependencies.correlationId ? { correlationId: dependencies.correlationId } : {}),
+        }),
+    });
+
+    await artifactGenerationOutboxService.markDelivered([createdRequest.outboxId]);
 
     return {
         kind: "created",
-        request: createdRequest,
+        request: createdRequest.request,
         artifactTypes: input.artifactTypes,
         scope: intent.scope,
         targetChangeSetIds: targetChangeSets.map(item => item.changeSet.id),
-        supportingChangeSetIds: resolvedChangeSets.filter(item => item.role === "SUPPORTING").map(item => item.changeSet.id),
+        supportingChangeSetIds: resolvedChangeSets
+            .filter(item => item.role === "SUPPORTING")
+            .map(item => item.changeSet.id),
     };
 }
